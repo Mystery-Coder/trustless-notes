@@ -1,26 +1,366 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ──────────────────────────────────────────── */
 :root {
-	--background: #ffffff;
-	--foreground: #171717;
+	--bg-base: #0a0a0a;
+	--bg-card: #111111;
+	--bg-input: #0f0f0f;
+	--border: #1a1a1a;
+	--border-hover: #2a2a2a;
+
+	--text-primary: #e8e8e8;
+	--text-secondary: #888888;
+	--text-muted: #444444;
+
+	/* Cold electric red accent */
+	--accent: #e63946;
+	--accent-dim: rgba(230, 57, 70, 0.12);
+	--accent-glow: rgba(230, 57, 70, 0.3);
+
+	--font-mono: "DM Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+	--font-display: "Fraunces", "Playfair Display", Georgia, serif;
+	--font-sans: "DM Sans", system-ui, sans-serif;
 }
 
-@theme inline {
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--font-sans: var(--font-geist-sans);
-	--font-mono: var(--font-geist-mono);
+/* ─── Reset & base ───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--background: #0a0a0a;
-		--foreground: #ededed;
-	}
+html {
+	scroll-behavior: smooth;
 }
 
 body {
-	background: var(--background);
-	color: var(--foreground);
-	font-family: Arial, Helvetica, sans-serif;
+	background: var(--bg-base);
+	color: var(--text-primary);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	min-height: 100vh;
+	overflow-x: hidden;
+}
+
+/* ─── Typography ─────────────────────────────────────────────── */
+.font-display {
+	font-family: var(--font-display);
+}
+
+.font-mono {
+	font-family: var(--font-mono);
+}
+
+/* ─── Animated hex-grid background ───────────────────────────── */
+.hex-bg {
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.hex-bg::before {
+	content: "";
+	position: absolute;
+	inset: -20%;
+	background-image: 
+		linear-gradient(rgba(230, 57, 70, 0.03) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(230, 57, 70, 0.03) 1px, transparent 1px);
+	background-size: 40px 40px;
+	animation: grid-drift 20s linear infinite;
+}
+
+.hex-bg::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: radial-gradient(ellipse 60% 50% at 50% 50%, transparent 30%, #0a0a0a 100%);
+}
+
+@keyframes grid-drift {
+	0% { transform: translate(0, 0); }
+	100% { transform: translate(40px, 40px); }
+}
+
+/* Floating hex strings */
+.hex-string {
+	position: absolute;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: rgba(230, 57, 70, 0.06);
+	letter-spacing: 0.1em;
+	white-space: nowrap;
+	animation: float-up linear infinite;
+	user-select: none;
+}
+
+@keyframes float-up {
+	0% { transform: translateY(100vh); opacity: 0; }
+	5% { opacity: 1; }
+	95% { opacity: 1; }
+	100% { transform: translateY(-10vh); opacity: 0; }
+}
+
+/* ─── Cards ──────────────────────────────────────────────────── */
+.card {
+	background: var(--bg-card);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+	border-color: var(--border-hover);
+}
+
+.card-feature {
+	background: var(--bg-card);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 28px;
+	transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card-feature:hover {
+	border-color: var(--accent);
+	transform: translateY(-2px);
+	box-shadow: 0 8px 32px var(--accent-dim);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	border-radius: 8px;
+	font-family: var(--font-mono);
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.04em;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	border: none;
+	text-decoration: none;
+	padding: 12px 24px;
+	position: relative;
+	overflow: hidden;
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: white;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.btn:not(:disabled):active::after {
+	opacity: 0.05;
+}
+
+.btn-primary {
+	background: var(--accent);
+	color: white;
+	box-shadow: 0 0 24px var(--accent-dim);
+}
+
+.btn-primary:not(:disabled):hover {
+	background: #ff4757;
+	box-shadow: 0 0 36px var(--accent-glow);
+	transform: translateY(-1px);
+}
+
+.btn-secondary {
+	background: transparent;
+	color: var(--text-primary);
+	border: 1px solid var(--border-hover);
+}
+
+.btn-secondary:not(:disabled):hover {
+	border-color: var(--text-secondary);
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.btn-ghost {
+	background: transparent;
+	color: var(--text-secondary);
+	padding: 8px 16px;
+}
+
+.btn-ghost:not(:disabled):hover {
+	color: var(--text-primary);
+	background: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Form inputs ────────────────────────────────────────────── */
+.input-field {
+	width: 100%;
+	background: var(--bg-input);
+	border: 1px solid var(--border-hover);
+	border-radius: 8px;
+	padding: 12px 16px;
+	font-family: var(--font-mono);
+	font-size: 13px;
+	color: var(--text-primary);
+	outline: none;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-field::placeholder {
+	color: var(--text-muted);
+}
+
+.input-field:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+/* ─── Auth form shell ─────────────────────────────────────────── */
+.auth-shell {
+	min-height: 100vh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	position: relative;
+}
+
+.auth-card {
+	width: 100%;
+	max-width: 420px;
+	background: var(--bg-card);
+	border: 1px solid var(--border);
+	border-radius: 16px;
+	padding: 40px;
+	position: relative;
+	z-index: 1;
+}
+
+.auth-card::before {
+	content: "";
+	position: absolute;
+	inset: -1px;
+	border-radius: 17px;
+	background: linear-gradient(135deg, var(--accent-dim), transparent 60%);
+	z-index: -1;
+}
+
+/* ─── Error / status badges ──────────────────────────────────── */
+.badge-error {
+	background: rgba(230, 57, 70, 0.08);
+	border: 1px solid rgba(230, 57, 70, 0.2);
+	color: #ff6b7a;
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+
+.badge-loading {
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid var(--border-hover);
+	color: var(--text-secondary);
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+/* ─── Spinner ────────────────────────────────────────────────── */
+.spinner {
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--border-hover);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.7s linear infinite;
+	flex-shrink: 0;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+/* ─── Accent label ───────────────────────────────────────────── */
+.label-mono {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	display: block;
+	margin-bottom: 8px;
+}
+
+/* ─── Divider ────────────────────────────────────────────────── */
+.divider {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 24px 0;
+}
+
+/* ─── Accent highlight ───────────────────────────────────────── */
+.text-accent {
+	color: var(--accent);
+}
+
+/* ─── Dashboard sidebar ──────────────────────────────────────── */
+.sidebar {
+	width: 260px;
+	flex-shrink: 0;
+	background: var(--bg-card);
+	border-right: 1px solid var(--border);
+	min-height: 100vh;
+	padding: 24px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.topbar {
+	height: 56px;
+	background: var(--bg-card);
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 24px;
+	flex-shrink: 0;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar {
+	width: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border-hover);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-muted);
+}
+
+/* ─── Tooltip (Radix override) ───────────────────────────────── */
+[data-radix-popper-content-wrapper] {
+	z-index: 9999 !important;
 }
