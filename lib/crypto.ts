@@ -134,3 +134,28 @@ export function generateSalt(): string {
 	crypto.getRandomValues(bytes);
 	return bytesToHex(bytes);
 }
+/*
+Functions to assist in ECDH keys only
+*/
+export async function cryptoKeyToBase64(
+	key: CryptoKey,
+	format: "spki" | "pkcs8",
+): Promise<string> {
+	const bytes = await window.crypto.subtle.exportKey(format, key);
+	return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+export async function base64ToCryptoKey(
+	base64: string,
+	format: "spki" | "pkcs8",
+	usage: KeyUsage = "deriveKey",
+): Promise<CryptoKey> {
+	const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+	return await window.crypto.subtle.importKey(
+		format,
+		bytes,
+		{ name: "ECDH", namedCurve: "P-256" },
+		true,
+		[usage],
+	);
+}

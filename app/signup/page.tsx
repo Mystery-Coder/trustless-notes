@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { deriveKey, encrypt, generateSalt } from "@/lib/crypto";
+import {
+	deriveKey,
+	encrypt,
+	generateSalt,
+	cryptoKeyToBase64,
+} from "@/lib/crypto";
 import { useSessionStore } from "@/store/session";
 
 export default function SignupPage() {
@@ -13,12 +18,14 @@ export default function SignupPage() {
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [confirm, setConfirm] = useState("");
-	const [status, setStatus] = useState<"idle" | "deriving" | "submitting">("idle");
+	const [status, setStatus] = useState<"idle" | "deriving" | "submitting">(
+		"idle",
+	);
 	const [error, setError] = useState<string | null>(null);
 
 	const isLoading = status === "deriving" || status === "submitting";
 
-	async function handleSubmit(e: React.FormEvent) {
+	async function handleSubmit(e: React.SubmitEvent) {
 		e.preventDefault();
 		setError(null);
 
@@ -36,20 +43,39 @@ export default function SignupPage() {
 		}
 
 		try {
-			// 1. Generate salt
 			const salt = generateSalt();
 
-			// 2. Derive AES-GCM key (PBKDF2, 200k iter) — intentionally slow
+			// Derive AES-GCM key (PBKDF2, 200k iter)
 			setStatus("deriving");
 			const key = await deriveKey(password, salt);
 
-			// 3-4. Encrypt sentinel value with derived key
+			// Encrypt the String with derived key
 			const { cipher: sentinel_cipher, iv: sentinel_iv } = await encrypt(
 				key,
 				"VALID_PASSWORD",
 			);
 
-			// 5. POST to API
+			const ecdhKeyPair = await window.crypto.subtle.generateKey(
+				{
+					name: "ECDH",
+					namedCurve: "P-256",
+				},
+				true,
+				["deriveKey"],
+			);
+
+			const {
+				cipher: ecdh_private_key_cipher,
+				iv: ecdh_private_key_cipher_iv,
+			} = await encrypt(
+				key,
+				await cryptoKeyToBase64(ecdhKeyPair.privateKey, "pkcs8"),
+			);
+			const ecdh_public_key = await cryptoKeyToBase64(
+				ecdhKeyPair.publicKey,
+				"spki",
+			);
+
 			setStatus("submitting");
 			const res = await fetch("/api/auth/signup", {
 				method: "POST",
@@ -59,6 +85,9 @@ export default function SignupPage() {
 					salt,
 					sentinel_cipher,
 					sentinel_iv,
+					ecdh_public_key,
+					ecdh_private_key_cipher,
+					ecdh_private_key_cipher_iv,
 				}),
 			});
 
@@ -74,10 +103,9 @@ export default function SignupPage() {
 				return;
 			}
 
-			// 6. Store in Zustand (memory only)
+			// Store in Zustand (memory only)
 			setSession(username.trim(), key);
 
-			// 7. Redirect
 			router.push("/dashboard");
 		} catch (err) {
 			console.error("Signup error:", err);
@@ -88,11 +116,9 @@ export default function SignupPage() {
 
 	return (
 		<div className="auth-shell">
-			{/* Background grid */}
 			<div className="hex-bg" aria-hidden="true" />
 
 			<div className="auth-card">
-				{/* Logo */}
 				<div style={{ marginBottom: 32 }}>
 					<Link
 						href="/"
@@ -104,7 +130,8 @@ export default function SignupPage() {
 							textDecoration: "none",
 						}}
 					>
-						← trustless<span style={{ color: "var(--accent)" }}>.</span>notes
+						← trustless
+						<span style={{ color: "var(--accent)" }}>.</span>notes
 					</Link>
 				</div>
 
@@ -118,12 +145,18 @@ export default function SignupPage() {
 				>
 					Create account
 				</h1>
-				<p className="font-mono" style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 32 }}>
+				<p
+					className="font-mono"
+					style={{
+						fontSize: 12,
+						color: "var(--text-muted)",
+						marginBottom: 32,
+					}}
+				>
 					Your key is derived locally. We never see your password.
 				</p>
 
 				<form onSubmit={handleSubmit} noValidate>
-					{/* Username */}
 					<div style={{ marginBottom: 20 }}>
 						<label className="label-mono" htmlFor="signup-username">
 							Username
@@ -177,20 +210,29 @@ export default function SignupPage() {
 
 					{/* Status messages */}
 					{error && (
-						<div className="badge-error" style={{ marginBottom: 16 }}>
+						<div
+							className="badge-error"
+							style={{ marginBottom: 16 }}
+						>
 							{error}
 						</div>
 					)}
 
 					{status === "deriving" && (
-						<div className="badge-loading" style={{ marginBottom: 16 }}>
+						<div
+							className="badge-loading"
+							style={{ marginBottom: 16 }}
+						>
 							<div className="spinner" />
 							Deriving key… (PBKDF2 · 200,000 iterations)
 						</div>
 					)}
 
 					{status === "submitting" && (
-						<div className="badge-loading" style={{ marginBottom: 16 }}>
+						<div
+							className="badge-loading"
+							style={{ marginBottom: 16 }}
+						>
 							<div className="spinner" />
 							Creating account…
 						</div>
@@ -211,12 +253,19 @@ export default function SignupPage() {
 
 				<p
 					className="font-mono"
-					style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}
+					style={{
+						fontSize: 12,
+						color: "var(--text-muted)",
+						textAlign: "center",
+					}}
 				>
 					Already have an account?{" "}
 					<Link
 						href="/signin"
-						style={{ color: "var(--accent)", textDecoration: "none" }}
+						style={{
+							color: "var(--accent)",
+							textDecoration: "none",
+						}}
 					>
 						Sign in →
 					</Link>
@@ -236,9 +285,10 @@ export default function SignupPage() {
 						lineHeight: 1.6,
 					}}
 				>
-					<span style={{ color: "var(--accent)" }}>ⓘ</span> Your encryption key never
-					leaves this browser. We only store your username + an encrypted sentinel
-					value used to verify your password on future logins.
+					<span style={{ color: "var(--accent)" }}>ⓘ</span> Your
+					encryption key never leaves this browser. We only store your
+					username + an encrypted sentinel value used to verify your
+					password on future logins.
 				</div>
 			</div>
 		</div>

@@ -203,29 +203,6 @@ export default function LandingPage() {
 						Sign In
 					</Link>
 				</div>
-
-				{/* Cipher demo strip */}
-				<div
-					className="font-mono"
-					style={{
-						marginTop: 64,
-						padding: "16px 20px",
-						background: "var(--bg-card)",
-						border: "1px solid var(--border)",
-						borderRadius: 10,
-						fontSize: 12,
-						color: "var(--text-muted)",
-						letterSpacing: "0.05em",
-						overflow: "hidden",
-						whiteSpace: "nowrap",
-						textOverflow: "ellipsis",
-					}}
-				>
-					<span style={{ color: "var(--accent)", marginRight: 12 }}>
-						cipher:
-					</span>
-					U2FsdGVkX1+4qJ7mN2xRpLkF8vCb3eAoQdPwYtZhXnGsVMjKIuOcyBrTlHiEfD==
-				</div>
 			</section>
 
 			{/* Feature cards */}

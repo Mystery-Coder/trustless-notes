@@ -227,7 +227,7 @@ export default function SigninPage() {
 				>
 					<span style={{ color: "var(--accent)" }}>ⓘ</span> We
 					can&apos;t distinguish a wrong username from a wrong
-					password. Both show the same error — by design.
+					password. Both show the same error by design.
 				</div>
 			</div>
 		</div>
