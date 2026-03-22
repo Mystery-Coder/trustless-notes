@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 			sentinel_iv,
 			ecdh_public_key,
 			ecdh_private_key_cipher,
-			ecdh_private_key_cipher_iv,
+			ecdh_private_key_iv,
 		} = body;
 
 		if (!username || !salt || !sentinel_cipher || !sentinel_iv) {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 				sentinel_iv,
 				ecdh_public_key,
 				ecdh_private_key_cipher,
-				ecdh_private_key_cipher_iv,
+				ecdh_private_key_iv,
 			})
 			.select("id, username")
 			.single();

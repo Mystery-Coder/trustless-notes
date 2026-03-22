@@ -159,3 +159,38 @@ export async function base64ToCryptoKey(
 		[usage],
 	);
 }
+
+/**
+ * Wraps (encrypts) a per-note AES-GCM key using the user's derivedKey.
+ * Exports the noteKey as raw bytes, base64-encodes them, then encrypts
+ * that string with the wrapping key.
+ */
+export async function wrapNoteKey(
+	noteKey: CryptoKey,
+	wrappingKey: CryptoKey,
+): Promise<{ cipher: string; iv: string }> {
+	const raw = await window.crypto.subtle.exportKey("raw", noteKey);
+	const base64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
+	return await encrypt(wrappingKey, base64);
+}
+
+/**
+ * Unwraps (decrypts) a per-note AES-GCM key using the user's derivedKey.
+ * Decrypts the base64 string, converts it back to raw bytes, and imports
+ * as an extractable AES-GCM CryptoKey.
+ */
+export async function unwrapNoteKey(
+	cipher: string,
+	iv: string,
+	wrappingKey: CryptoKey,
+): Promise<CryptoKey> {
+	const base64 = await decrypt(wrappingKey, cipher, iv);
+	const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+	return await window.crypto.subtle.importKey(
+		"raw",
+		bytes,
+		{ name: "AES-GCM" },
+		true,
+		["encrypt", "decrypt"],
+	);
+}

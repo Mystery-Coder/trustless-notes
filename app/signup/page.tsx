@@ -64,13 +64,11 @@ export default function SignupPage() {
 				["deriveKey"],
 			);
 
-			const {
-				cipher: ecdh_private_key_cipher,
-				iv: ecdh_private_key_cipher_iv,
-			} = await encrypt(
-				key,
-				await cryptoKeyToBase64(ecdhKeyPair.privateKey, "pkcs8"),
-			);
+			const { cipher: ecdh_private_key_cipher, iv: ecdh_private_key_iv } =
+				await encrypt(
+					key,
+					await cryptoKeyToBase64(ecdhKeyPair.privateKey, "pkcs8"),
+				);
 			const ecdh_public_key = await cryptoKeyToBase64(
 				ecdhKeyPair.publicKey,
 				"spki",
@@ -87,7 +85,7 @@ export default function SignupPage() {
 					sentinel_iv,
 					ecdh_public_key,
 					ecdh_private_key_cipher,
-					ecdh_private_key_cipher_iv,
+					ecdh_private_key_iv,
 				}),
 			});
 
@@ -102,6 +100,13 @@ export default function SignupPage() {
 				setStatus("idle");
 				return;
 			}
+
+			// Set server-side session cookie
+			await fetch("/api/auth/session", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ username: username.trim() }),
+			});
 
 			// Store in Zustand (memory only)
 			setSession(username.trim(), key);

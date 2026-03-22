@@ -65,10 +65,17 @@ export default function SigninPage() {
 				return;
 			}
 
-			// 5. Store derived key + username in Zustand (memory only)
+			// 5. Set server-side session cookie
+			await fetch("/api/auth/session", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ username: username.trim() }),
+			});
+
+			// 6. Store derived key + username in Zustand (memory only)
 			setSession(username.trim(), key);
 
-			// 6. Redirect to dashboard
+			// 7. Redirect to dashboard
 			router.push("/dashboard");
 		} catch (err) {
 			console.error("Signin error:", err);
