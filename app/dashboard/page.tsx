@@ -237,12 +237,15 @@ export default function DashboardPage() {
 
 	const activeNote = notes.find((n) => n.id === activeNoteId);
 
-	// Guard: redirect if no session
+	// Guard: redirect if no session (derivedKey is lost on refresh since it's in-memory)
 	useEffect(() => {
-		if (!username) {
+		if (!username || !derivedKey) {
+			// Clear stale cookie if it exists
+			fetch("/api/auth/session", { method: "DELETE" });
+			clearSession();
 			router.replace("/signin");
 		}
-	}, [username, router]);
+	}, [username, derivedKey, router, clearSession]);
 
 	// Load and decrypt notes on mount
 	useEffect(() => {
