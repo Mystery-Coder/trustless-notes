@@ -202,6 +202,13 @@ export default function LandingPage() {
 					>
 						Sign In
 					</Link>
+					<Link
+						href="/simulator"
+						className="btn btn-ghost"
+						style={{ fontSize: 14, padding: "14px 32px" }}
+					>
+						Attack Simulator
+					</Link>
 				</div>
 			</section>
 

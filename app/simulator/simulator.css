@@ -1,0 +1,900 @@
+/* ═══════════════════════════════════════════════════════════════
+   TRUSTLESS SECURITY SIMULATOR — Standalone Styles
+   Dark, cinematic, terminal aesthetic
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Design tokens ─────────────────────────────────────────── */
+.sim-root {
+  --sim-bg: #080808;
+  --sim-card: #0f0f0f;
+  --sim-border: #1f1f1f;
+  --sim-border-hover: #2a2a2a;
+  --sim-green: #39ff14;
+  --sim-green-dim: rgba(57, 255, 20, 0.10);
+  --sim-green-glow: rgba(57, 255, 20, 0.25);
+  --sim-red: #ff3131;
+  --sim-red-dim: rgba(255, 49, 49, 0.10);
+  --sim-red-glow: rgba(255, 49, 49, 0.25);
+  --sim-yellow: #ffcc00;
+  --sim-yellow-dim: rgba(255, 204, 0, 0.10);
+  --sim-text: #d4d4d4;
+  --sim-text-dim: #666666;
+  --sim-text-muted: #3a3a3a;
+  --sim-font: var(--font-dm-mono), "Fira Code", "Cascadia Code", ui-monospace, monospace;
+
+  font-family: var(--sim-font);
+  background: var(--sim-bg);
+  color: var(--sim-text);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ─── Animated grid background ──────────────────────────────── */
+.sim-grid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sim-grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background-image:
+    linear-gradient(rgba(57, 255, 20, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57, 255, 20, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: sim-grid-drift 25s linear infinite;
+}
+
+.sim-grid-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 70% 60% at 50% 30%, transparent 20%, #080808 100%);
+}
+
+@keyframes sim-grid-drift {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(48px, 48px); }
+}
+
+/* ─── Scanline overlay ──────────────────────────────────────── */
+.sim-scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* ─── Content wrapper ───────────────────────────────────────── */
+.sim-content {
+  position: relative;
+  z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+/* ─── Header ────────────────────────────────────────────────── */
+.sim-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.sim-title {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.sim-subtitle {
+  font-size: 14px;
+  color: var(--sim-text-dim);
+  line-height: 1.6;
+  max-width: 560px;
+  margin: 0 auto 16px;
+}
+
+.sim-tag {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--sim-green);
+  background: var(--sim-green-dim);
+  border: 1px solid rgba(57, 255, 20, 0.15);
+  border-radius: 20px;
+  padding: 6px 16px;
+}
+
+/* ─── Tab pill selector ─────────────────────────────────────── */
+.sim-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--sim-card);
+  border: 1px solid var(--sim-border);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 32px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sim-tabs::-webkit-scrollbar { display: none; }
+
+.sim-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sim-text-dim);
+  font-family: var(--sim-font);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.sim-tab:hover {
+  color: var(--sim-text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sim-tab--active {
+  background: rgba(57, 255, 20, 0.08);
+  color: var(--sim-green);
+  box-shadow: 0 0 12px var(--sim-green-dim);
+}
+
+/* ─── Scenario panel with fade-up transition ────────────────── */
+.sim-panel-wrapper {
+  position: relative;
+  min-height: 400px;
+}
+
+.sim-panel {
+  animation: sim-fade-up 0.3s ease both;
+}
+
+@keyframes sim-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Cards ─────────────────────────────────────────────────── */
+.sim-card {
+  background: var(--sim-card);
+  border: 1px solid var(--sim-border);
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.sim-card--flash-red {
+  animation: sim-flash-red 0.4s ease;
+}
+
+.sim-card--flash-green {
+  animation: sim-flash-green 0.4s ease;
+}
+
+@keyframes sim-flash-red {
+  0%   { box-shadow: 0 0 0px var(--sim-red-glow); border-color: var(--sim-red); }
+  50%  { box-shadow: 0 0 30px var(--sim-red-glow); border-color: var(--sim-red); }
+  100% { box-shadow: none; border-color: var(--sim-border); }
+}
+
+@keyframes sim-flash-green {
+  0%   { box-shadow: 0 0 0px var(--sim-green-glow); border-color: var(--sim-green); }
+  50%  { box-shadow: 0 0 30px var(--sim-green-glow); border-color: var(--sim-green); }
+  100% { box-shadow: none; border-color: var(--sim-border); }
+}
+
+/* ─── Section title ─────────────────────────────────────────── */
+.sim-section-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sim-text-dim);
+  margin-bottom: 16px;
+}
+
+.sim-description {
+  font-size: 13px;
+  color: var(--sim-text-dim);
+  line-height: 1.65;
+  margin-bottom: 24px;
+}
+
+/* ─── Inputs ────────────────────────────────────────────────── */
+.sim-input-group {
+  margin-bottom: 12px;
+}
+
+.sim-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sim-text-muted);
+  margin-bottom: 6px;
+}
+
+.sim-input {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid var(--sim-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--sim-font);
+  font-size: 13px;
+  color: var(--sim-text);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sim-input::placeholder {
+  color: var(--sim-text-muted);
+}
+
+.sim-input:focus {
+  border-color: var(--sim-green);
+  box-shadow: 0 0 0 2px var(--sim-green-dim);
+}
+
+.sim-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ─── Buttons ───────────────────────────────────────────────── */
+.sim-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border: 1px solid var(--sim-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sim-text);
+  font-family: var(--sim-font);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sim-btn:hover:not(:disabled) {
+  border-color: var(--sim-green);
+  color: var(--sim-green);
+  box-shadow: 0 0 16px var(--sim-green-dim);
+}
+
+.sim-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sim-btn--attack {
+  background: rgba(255, 49, 49, 0.08);
+  border-color: rgba(255, 49, 49, 0.3);
+  color: var(--sim-red);
+}
+
+.sim-btn--attack:hover:not(:disabled) {
+  background: rgba(255, 49, 49, 0.15);
+  border-color: var(--sim-red);
+  box-shadow: 0 0 16px var(--sim-red-dim);
+  color: var(--sim-red);
+}
+
+.sim-btn--reset {
+  padding: 8px 16px;
+  font-size: 11px;
+  color: var(--sim-text-muted);
+}
+
+.sim-btn--reset:hover:not(:disabled) {
+  color: var(--sim-text-dim);
+  border-color: var(--sim-border-hover);
+  box-shadow: none;
+}
+
+/* ─── Progress bar ──────────────────────────────────────────── */
+.sim-progress-wrap {
+  margin: 16px 0;
+}
+
+.sim-progress-label {
+  font-size: 11px;
+  color: var(--sim-text-dim);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--sim-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sim-progress-fill {
+  height: 100%;
+  background: var(--sim-green);
+  border-radius: 2px;
+  transition: width 0.05s linear;
+  box-shadow: 0 0 8px var(--sim-green-glow);
+}
+
+.sim-progress-fill--red {
+  background: var(--sim-red);
+  box-shadow: 0 0 8px var(--sim-red-glow);
+}
+
+.sim-counter {
+  font-variant-numeric: tabular-nums;
+  color: var(--sim-green);
+  font-weight: 500;
+}
+
+/* ─── Step chain ────────────────────────────────────────────── */
+.sim-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 20px 0;
+}
+
+.sim-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  border-left: 2px solid var(--sim-border);
+  margin-left: 10px;
+  padding-left: 24px;
+  position: relative;
+  opacity: 0.3;
+  transition: opacity 0.3s ease;
+}
+
+.sim-step--active,
+.sim-step--done {
+  opacity: 1;
+}
+
+.sim-step::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 20px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sim-border);
+  border: 2px solid var(--sim-bg);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.sim-step--active::before {
+  background: var(--sim-green);
+  box-shadow: 0 0 8px var(--sim-green-glow);
+  animation: sim-pulse 1s ease infinite;
+}
+
+.sim-step--done::before {
+  background: var(--sim-green);
+}
+
+.sim-step--fail::before {
+  background: var(--sim-red);
+  box-shadow: 0 0 8px var(--sim-red-glow);
+}
+
+@keyframes sim-pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--sim-green-glow); }
+  50% { box-shadow: 0 0 16px var(--sim-green-glow); }
+}
+
+.sim-step-label {
+  font-size: 12px;
+  color: var(--sim-text-dim);
+  line-height: 1.5;
+}
+
+.sim-step-value {
+  font-size: 12px;
+  color: var(--sim-green);
+  word-break: break-all;
+  margin-top: 4px;
+}
+
+.sim-step-value--red {
+  color: var(--sim-red);
+}
+
+/* ─── Result messages ───────────────────────────────────────── */
+.sim-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+
+.sim-result--success {
+  background: var(--sim-green-dim);
+  border: 1px solid rgba(57, 255, 20, 0.15);
+  color: var(--sim-green);
+}
+
+.sim-result--fail {
+  background: var(--sim-red-dim);
+  border: 1px solid rgba(255, 49, 49, 0.15);
+  color: var(--sim-red);
+}
+
+.sim-result--warn {
+  background: var(--sim-yellow-dim);
+  border: 1px solid rgba(255, 204, 0, 0.15);
+  color: var(--sim-yellow);
+}
+
+/* ─── Analysis table ────────────────────────────────────────── */
+.sim-analysis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 20px 0;
+  background: var(--sim-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sim-analysis-col {
+  background: var(--sim-card);
+  padding: 16px;
+}
+
+.sim-analysis-header {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sim-text-dim);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--sim-border);
+}
+
+.sim-analysis-item {
+  font-size: 12px;
+  color: var(--sim-text);
+  padding: 4px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+/* ─── Risk level badge ──────────────────────────────────────── */
+.sim-risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin: 16px 0 8px;
+}
+
+.sim-risk--low {
+  background: var(--sim-green-dim);
+  border: 1px solid rgba(57, 255, 20, 0.15);
+  color: var(--sim-green);
+}
+
+.sim-risk--medium {
+  background: var(--sim-yellow-dim);
+  border: 1px solid rgba(255, 204, 0, 0.15);
+  color: var(--sim-yellow);
+}
+
+.sim-risk--high {
+  background: var(--sim-red-dim);
+  border: 1px solid rgba(255, 49, 49, 0.15);
+  color: var(--sim-red);
+}
+
+.sim-risk-note {
+  font-size: 12px;
+  color: var(--sim-text-dim);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+/* ─── Glitch effect ─────────────────────────────────────────── */
+.sim-glitch {
+  position: relative;
+  display: inline-block;
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.sim-glitch--green {
+  color: var(--sim-green);
+  text-shadow: 0 0 20px var(--sim-green-glow);
+}
+
+.sim-glitch--red {
+  color: var(--sim-red);
+  text-shadow: 0 0 20px var(--sim-red-glow);
+}
+
+.sim-glitch[data-active="true"] {
+  animation: sim-glitch-anim 0.3s ease infinite alternate;
+}
+
+.sim-glitch[data-active="true"]::before,
+.sim-glitch[data-active="true"]::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sim-glitch[data-active="true"]::before {
+  color: #ff0000;
+  animation: sim-glitch-r 0.2s ease infinite alternate;
+  clip-path: inset(0 0 50% 0);
+}
+
+.sim-glitch[data-active="true"]::after {
+  color: #00ffff;
+  animation: sim-glitch-b 0.25s ease infinite alternate;
+  clip-path: inset(50% 0 0 0);
+}
+
+@keyframes sim-glitch-anim {
+  0% { transform: translate(0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(1px, -1px); }
+  75% { transform: translate(-1px, 2px); }
+  100% { transform: translate(2px, 0); }
+}
+
+@keyframes sim-glitch-r {
+  0% { transform: translate(0); }
+  100% { transform: translate(-3px, 1px); }
+}
+
+@keyframes sim-glitch-b {
+  0% { transform: translate(0); }
+  100% { transform: translate(3px, -1px); }
+}
+
+/* ─── Terminal ──────────────────────────────────────────────── */
+.sim-terminal {
+  background: #050505;
+  border: 1px solid var(--sim-border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.sim-terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #0c0c0c;
+  border-bottom: 1px solid var(--sim-border);
+}
+
+.sim-terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.sim-terminal-dot--red { background: #ff5f56; }
+.sim-terminal-dot--yellow { background: #ffbd2e; }
+.sim-terminal-dot--green { background: #27c93f; }
+
+.sim-terminal-title {
+  font-size: 11px;
+  color: var(--sim-text-muted);
+  margin-left: 8px;
+}
+
+.sim-terminal-body {
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.sim-terminal-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sim-terminal-line--cmd {
+  color: var(--sim-green);
+}
+
+.sim-terminal-line--response {
+  color: var(--sim-text-dim);
+}
+
+.sim-terminal-line--error {
+  color: var(--sim-red);
+}
+
+.sim-terminal-line--comment {
+  color: var(--sim-text-muted);
+}
+
+.sim-terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--sim-green);
+  animation: sim-blink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes sim-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── Typewriter ────────────────────────────────────────────── */
+.sim-typewriter {
+  overflow: hidden;
+  border-right: 2px solid var(--sim-green);
+  white-space: nowrap;
+  animation: sim-typing 2s steps(40, end), sim-cursor-blink 0.7s step-end infinite;
+  font-size: 14px;
+  color: var(--sim-green);
+}
+
+@keyframes sim-typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes sim-cursor-blink {
+  0%, 100% { border-color: var(--sim-green); }
+  50% { border-color: transparent; }
+}
+
+/* ─── Sub-tabs ──────────────────────────────────────────────── */
+.sim-subtabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+}
+
+.sim-subtab {
+  padding: 8px 16px;
+  border: 1px solid var(--sim-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sim-text-dim);
+  font-family: var(--sim-font);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sim-subtab:hover {
+  color: var(--sim-text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sim-subtab--active {
+  background: rgba(57, 255, 20, 0.08);
+  color: var(--sim-green);
+  border-color: rgba(57, 255, 20, 0.2);
+}
+
+/* ─── Comparison table ──────────────────────────────────────── */
+.sim-compare {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 20px 0;
+  font-size: 12px;
+}
+
+.sim-compare th {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sim-text-dim);
+  background: var(--sim-card);
+  border-bottom: 1px solid var(--sim-border);
+}
+
+.sim-compare th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.sim-compare th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.sim-compare td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--sim-border);
+  color: var(--sim-text);
+  background: var(--sim-bg);
+}
+
+.sim-compare tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.sim-compare tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+/* ─── Cookie animation ──────────────────────────────────────── */
+.sim-cookie-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 12px;
+  background: #050505;
+  border-radius: 6px;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.sim-cookie-old {
+  text-decoration: line-through;
+  color: var(--sim-red);
+  opacity: 0.6;
+}
+
+.sim-cookie-arrow {
+  color: var(--sim-text-muted);
+}
+
+.sim-cookie-new {
+  color: var(--sim-green);
+}
+
+/* ─── Copy button ───────────────────────────────────────────── */
+.sim-copy-btn {
+  background: none;
+  border: 1px solid var(--sim-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: var(--sim-font);
+  font-size: 10px;
+  color: var(--sim-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sim-copy-btn:hover {
+  border-color: var(--sim-text-dim);
+  color: var(--sim-text-dim);
+}
+
+/* ─── Header action row ─────────────────────────────────────── */
+.sim-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* ─── Hex display ───────────────────────────────────────────── */
+.sim-hex {
+  font-size: 12px;
+  color: var(--sim-green);
+  background: rgba(57, 255, 20, 0.05);
+  padding: 6px 10px;
+  border-radius: 4px;
+  word-break: break-all;
+  border: 1px solid rgba(57, 255, 20, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ─── Mobile responsive ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sim-content {
+    padding: 24px 16px 60px;
+  }
+
+  .sim-title {
+    font-size: 18px;
+    letter-spacing: 0.1em;
+  }
+
+  .sim-subtitle {
+    font-size: 12px;
+  }
+
+  .sim-tabs {
+    flex-direction: column;
+  }
+
+  .sim-tab {
+    text-align: left;
+    padding: 14px 16px;
+  }
+
+  .sim-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-analysis {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-glitch {
+    font-size: 22px;
+  }
+
+  .sim-compare {
+    font-size: 10px;
+  }
+
+  .sim-compare th,
+  .sim-compare td {
+    padding: 8px 6px;
+  }
+}
