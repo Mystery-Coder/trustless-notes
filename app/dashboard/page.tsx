@@ -79,7 +79,11 @@ function NoteEditor({
 		let cancelled = false;
 		setLoading(true);
 
-		decrypt(activeNote.noteKey, activeNote.content_cipher, activeNote.content_iv)
+		decrypt(
+			activeNote.noteKey,
+			activeNote.content_cipher,
+			activeNote.content_iv,
+		)
 			.then((plaintext) => {
 				if (!cancelled) {
 					setContent(plaintext);
@@ -105,7 +109,10 @@ function NoteEditor({
 		if (loading) return;
 		const timer = setTimeout(async () => {
 			try {
-				const { cipher, iv } = await encrypt(activeNote.noteKey, content);
+				const { cipher, iv } = await encrypt(
+					activeNote.noteKey,
+					content,
+				);
 				await fetch("/api/notes/update", {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
@@ -115,7 +122,10 @@ function NoteEditor({
 						content_iv: iv,
 					}),
 				});
-				updateNote(activeNote.id, { content_cipher: cipher, content_iv: iv });
+				updateNote(activeNote.id, {
+					content_cipher: cipher,
+					content_iv: iv,
+				});
 			} catch (err) {
 				console.error("Auto-save content failed:", err);
 			}
@@ -231,8 +241,14 @@ function NoteEditor({
 export default function DashboardPage() {
 	const router = useRouter();
 	const { username, derivedKey, clearSession } = useSessionStore();
-	const { notes, activeNoteId, setNotes, addNote, deleteNote, setActiveNoteId } =
-		useNotesStore();
+	const {
+		notes,
+		activeNoteId,
+		setNotes,
+		addNote,
+		deleteNote,
+		setActiveNoteId,
+	} = useNotesStore();
 	const [loadingNotes, setLoadingNotes] = useState(true);
 
 	const activeNote = notes.find((n) => n.id === activeNoteId);
@@ -272,7 +288,11 @@ export default function DashboardPage() {
 						note.wrapped_key_iv,
 						derivedKey!,
 					);
-					const title = await decrypt(noteKey, note.title_cipher, note.title_iv);
+					const title = await decrypt(
+						noteKey,
+						note.title_cipher,
+						note.title_iv,
+					);
 					return {
 						id: note.id,
 						title,
@@ -471,7 +491,10 @@ export default function DashboardPage() {
 							<div className="spinner" />
 							<span
 								className="font-mono"
-								style={{ fontSize: 11, color: "var(--text-muted)" }}
+								style={{
+									fontSize: 11,
+									color: "var(--text-muted)",
+								}}
 							>
 								Decrypting…
 							</span>
@@ -512,10 +535,15 @@ export default function DashboardPage() {
 									>
 										{note.title || "Untitled"}
 									</button>
-									<Tooltip content="Delete" delayDuration={200}>
+									<Tooltip
+										content="Delete"
+										delayDuration={200}
+									>
 										<button
 											className="btn btn-ghost"
-											onClick={() => handleDeleteNote(note.id)}
+											onClick={() =>
+												handleDeleteNote(note.id)
+											}
 											style={{
 												padding: "6px 8px",
 												color: "var(--text-muted)",

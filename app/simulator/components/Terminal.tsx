@@ -26,18 +26,24 @@ export default function Terminal({
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    if (!running) {
-      setVisibleLines([]);
-      setShowCursor(false);
-      return;
-    }
+    // Always reset on every effect invocation — this handles both the
+    // `running = false` (reset) case AND React StrictMode's double-invoke,
+    // which would otherwise leave stale items in visibleLines from the first
+    // cancelled run, causing `line` to be undefined on the second render pass.
+    setVisibleLines([]);
+    setShowCursor(false);
+
+    if (!running) return;
 
     setShowCursor(true);
     let idx = 0;
+    let cancelled = false;
 
     const addLine = () => {
+      if (cancelled) return;
       if (idx < lines.length) {
-        setVisibleLines((prev) => [...prev, lines[idx]]);
+        const line = lines[idx];
+        if (line) setVisibleLines((prev) => [...prev, line]);
         idx++;
         timerRef.current = setTimeout(addLine, typingSpeed);
       } else {
@@ -47,7 +53,10 @@ export default function Terminal({
     };
 
     timerRef.current = setTimeout(addLine, 300);
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      cancelled = true;
+      clearTimeout(timerRef.current);
+    };
   }, [running, lines, typingSpeed, onComplete]);
 
   // Auto-scroll
@@ -66,7 +75,7 @@ export default function Terminal({
         <span className="sim-terminal-title">attacker@kali ~ $</span>
       </div>
       <div className="sim-terminal-body" ref={bodyRef}>
-        {visibleLines.map((line, i) => (
+        {visibleLines.filter(Boolean).map((line, i) => (
           <div key={i} className={`sim-terminal-line sim-terminal-line--${line.type}`}>
             {line.type === "cmd" ? `$ ${line.text}` : line.type === "comment" ? `# ${line.text}` : `> ${line.text}`}
           </div>
