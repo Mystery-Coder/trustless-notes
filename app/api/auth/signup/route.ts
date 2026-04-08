@@ -9,12 +9,13 @@ export async function POST(req: NextRequest) {
 			salt,
 			sentinel_cipher,
 			sentinel_iv,
+			sentinel_hash,
 			ecdh_public_key,
 			ecdh_private_key_cipher,
 			ecdh_private_key_iv,
 		} = body;
 
-		if (!username || !salt || !sentinel_cipher || !sentinel_iv) {
+		if (!username || !salt || !sentinel_cipher || !sentinel_iv || !sentinel_hash) {
 			return NextResponse.json(
 				{ error: "Missing required fields" },
 				{ status: 400 },
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
 				salt,
 				sentinel_cipher,
 				sentinel_iv,
+				sentinel_hash,
 				ecdh_public_key,
 				ecdh_private_key_cipher,
 				ecdh_private_key_iv,

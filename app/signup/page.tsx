@@ -8,6 +8,7 @@ import {
 	encrypt,
 	generateSalt,
 	cryptoKeyToBase64,
+	sha256Hex,
 } from "@/lib/crypto";
 import { useSessionStore } from "@/store/session";
 
@@ -49,11 +50,14 @@ export default function SignupPage() {
 			setStatus("deriving");
 			const key = await deriveKey(password, salt);
 
-			// Encrypt the String with derived key
+			// Generate random per-user sentinel and encrypt it
+			const sentinel = crypto.randomUUID();
 			const { cipher: sentinel_cipher, iv: sentinel_iv } = await encrypt(
 				key,
-				"VALID_PASSWORD",
+				sentinel,
 			);
+			// Hash the sentinel plaintext for server-side challenge-response
+			const sentinel_hash = await sha256Hex(sentinel);
 
 			const ecdhKeyPair = await window.crypto.subtle.generateKey(
 				{
@@ -83,6 +87,7 @@ export default function SignupPage() {
 					salt,
 					sentinel_cipher,
 					sentinel_iv,
+					sentinel_hash,
 					ecdh_public_key,
 					ecdh_private_key_cipher,
 					ecdh_private_key_iv,
@@ -101,11 +106,14 @@ export default function SignupPage() {
 				return;
 			}
 
-			// Set server-side session cookie
+			// Set server-side session cookie with sentinel proof
 			await fetch("/api/auth/session", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ username: username.trim() }),
+				body: JSON.stringify({
+					username: username.trim(),
+					sentinel_plaintext: sentinel,
+				}),
 			});
 
 			// Store in Zustand (memory only)

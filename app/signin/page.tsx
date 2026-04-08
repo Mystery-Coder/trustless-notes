@@ -58,19 +58,21 @@ export default function SigninPage() {
 				return;
 			}
 
-			// Extra sanity: sentinel must match
-			if (plaintext !== "VALID_PASSWORD") {
+			// 5. Set server-side session cookie with sentinel proof
+			const sessionRes = await fetch("/api/auth/session", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					username: username.trim(),
+					sentinel_plaintext: plaintext,
+				}),
+			});
+
+			if (!sessionRes.ok) {
 				setError("Invalid username or password.");
 				setStatus("idle");
 				return;
 			}
-
-			// 5. Set server-side session cookie
-			await fetch("/api/auth/session", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ username: username.trim() }),
-			});
 
 			// 6. Store derived key + username in Zustand (memory only)
 			setSession(username.trim(), key);

@@ -134,6 +134,17 @@ export function generateSalt(): string {
 	crypto.getRandomValues(bytes);
 	return bytesToHex(bytes);
 }
+
+/**
+ * Computes SHA-256 of a plaintext string.
+ * Returns hex-encoded digest (64 chars).
+ */
+export async function sha256Hex(plaintext: string): Promise<string> {
+	const enc = new TextEncoder();
+	const digest = await crypto.subtle.digest("SHA-256", enc.encode(plaintext));
+	return bytesToHex(new Uint8Array(digest));
+}
+
 /*
 Functions to assist in ECDH keys only
 */

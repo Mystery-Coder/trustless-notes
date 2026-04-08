@@ -7,6 +7,7 @@ create table users (
   salt text not null,
   sentinel_cipher text not null,
   sentinel_iv text not null,
+  sentinel_hash text not null,
   created_at timestamptz default now()
 );
 
