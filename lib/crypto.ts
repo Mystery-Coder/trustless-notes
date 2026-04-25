@@ -205,3 +205,163 @@ export async function unwrapNoteKey(
 		["encrypt", "decrypt"],
 	);
 }
+
+/**
+ * Decrypts and imports the user's ECDH private key.
+ * The private key was stored as PKCS8 base64, encrypted with the user's derivedKey.
+ * Returns a CryptoKey usable for ECDH key derivation.
+ */
+export async function decryptEcdhPrivateKey(
+	encryptedPrivateKeyCipher: string,
+	encryptedPrivateKeyIv: string,
+	derivedKey: CryptoKey,
+): Promise<CryptoKey> {
+	// Decrypt the base64-encoded PKCS8 private key
+	const privateKeyBase64 = await decrypt(
+		derivedKey,
+		encryptedPrivateKeyCipher,
+		encryptedPrivateKeyIv,
+	);
+	
+	// Convert base64 to bytes
+	const privateKeyBytes = Uint8Array.from(atob(privateKeyBase64), c => c.charCodeAt(0));
+	
+	// Import as PKCS8 ECDH private key
+	return await crypto.subtle.importKey(
+		"pkcs8",
+		privateKeyBytes,
+		{ name: "ECDH", namedCurve: "P-256" },
+		true, // extractable (needed for deriving shared secret)
+		["deriveKey", "deriveBits"],
+	);
+}
+
+/**
+ * Computes shared secret using ECDH between sender's private key and receiver's public key.
+ * Returns the raw shared secret as an ArrayBuffer.
+ */
+export async function computeSharedSecret(
+	myPrivateKey: CryptoKey,
+	theirPublicKeyBase64: string,
+): Promise<ArrayBuffer> {
+	// Convert receiver's base64 public key to bytes
+	const publicKeyBytes = Uint8Array.from(atob(theirPublicKeyBase64), c => c.charCodeAt(0));
+	
+	// Import receiver's public key (SPKI format)
+	const theirPublicKey = await crypto.subtle.importKey(
+		"spki",
+		publicKeyBytes,
+		{ name: "ECDH", namedCurve: "P-256" },
+		false,
+		[],
+	);
+	
+	// Derive shared secret (raw bits)
+	return await crypto.subtle.deriveBits(
+		{
+			name: "ECDH",
+			public: theirPublicKey,
+		},
+		myPrivateKey,
+		256, // 256 bits (32 bytes) — enough for AES-256 key
+	);
+}
+
+/**
+ * Derives an AES-GCM key from an ECDH shared secret using HKDF.
+ * This ensures we get a properly formatted AES-256 key from the raw shared secret.
+ */
+export async function deriveKeyFromSharedSecret(
+	sharedSecret: ArrayBuffer,
+	salt: BufferSource = new Uint8Array(32), // optional salt, defaults to zeros
+): Promise<CryptoKey> {
+	// Import the shared secret as raw key material for HKDF
+	const keyMaterial = await crypto.subtle.importKey(
+		"raw",
+		sharedSecret,
+		{ name: "HKDF" },
+		false,
+		["deriveKey"],
+	);
+	
+	// Derive AES-GCM key using HKDF
+	return await crypto.subtle.deriveKey(
+		{
+			name: "HKDF",
+			hash: "SHA-256",
+			salt,
+			info: new TextEncoder().encode("trustless-notes-shared-key"),
+		},
+		keyMaterial,
+		{ name: "AES-GCM", length: 256 },
+		false, // non-extractable
+		["encrypt", "decrypt"],
+	);
+}
+
+/**
+ * High-level function: wraps a note key using ECDH shared secret between sender and receiver.
+ * Combines: decrypt sender's ECDH private key → compute shared secret → derive AES key → wrap note key.
+ */
+export async function wrapNoteKeyForReceiver(
+	noteKey: CryptoKey,
+	senderDerivedKey: CryptoKey,
+	senderEncryptedPrivateKeyCipher: string,
+	senderEncryptedPrivateKeyIv: string,
+	receiverPublicKeyBase64: string,
+): Promise<{ wrappedKeyCipher: string; wrappedKeyIv: string }> {
+	// 1. Decrypt sender's ECDH private key
+	const senderEcdhPrivateKey = await decryptEcdhPrivateKey(
+		senderEncryptedPrivateKeyCipher,
+		senderEncryptedPrivateKeyIv,
+		senderDerivedKey,
+	);
+	
+	// 2. Compute shared secret with receiver's public key
+	const sharedSecret = await computeSharedSecret(
+		senderEcdhPrivateKey,
+		receiverPublicKeyBase64,
+	);
+	
+	// 3. Derive AES key from shared secret
+	const sharedAesKey = await deriveKeyFromSharedSecret(sharedSecret);
+	
+	// 4. Wrap the note key using the derived shared AES key
+	const wrapped = await wrapNoteKey(noteKey, sharedAesKey);
+	return {
+		wrappedKeyCipher: wrapped.cipher,
+		wrappedKeyIv: wrapped.iv,
+	};
+}
+
+/**
+ * High-level function: unwraps a note key that was wrapped for the receiver using ECDH.
+ * Receiver uses their own private key + sender's public key to compute same shared secret.
+ */
+export async function unwrapNoteKeyFromSender(
+	wrappedKeyCipher: string,
+	wrappedKeyIv: string,
+	receiverDerivedKey: CryptoKey,
+	receiverEncryptedPrivateKeyCipher: string,
+	receiverEncryptedPrivateKeyIv: string,
+	senderPublicKeyBase64: string,
+): Promise<CryptoKey> {
+	// 1. Decrypt receiver's ECDH private key
+	const receiverEcdhPrivateKey = await decryptEcdhPrivateKey(
+		receiverEncryptedPrivateKeyCipher,
+		receiverEncryptedPrivateKeyIv,
+		receiverDerivedKey,
+	);
+	
+	// 2. Compute shared secret with sender's public key
+	const sharedSecret = await computeSharedSecret(
+		receiverEcdhPrivateKey,
+		senderPublicKeyBase64,
+	);
+	
+	// 3. Derive AES key from shared secret
+	const sharedAesKey = await deriveKeyFromSharedSecret(sharedSecret);
+	
+	// 4. Unwrap the note key using the derived shared AES key
+	return await unwrapNoteKey(wrappedKeyCipher, wrappedKeyIv, sharedAesKey);
+}

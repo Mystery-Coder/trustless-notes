@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Tooltip } from "@radix-ui/themes";
 import { useSessionStore } from "@/store/session";
 import { useNotesStore, DecryptedNote } from "@/store/notes";
-import { encrypt, decrypt, wrapNoteKey, unwrapNoteKey } from "@/lib/crypto";
+import { encrypt, decrypt, wrapNoteKey, unwrapNoteKey, unwrapNoteKeyFromSender } from "@/lib/crypto";
+import ShareModal from "./components/ShareModal";
+import { useSharedNotesStore, SharedDecryptedNote } from "@/store/sharedNotes";
+import SharedNoteEditor from "./components/SharedNoteEditor";
 
 /* ─── Icons ──────────────────────────────────────────────────── */
 function LockIcon() {
@@ -59,6 +62,25 @@ function TrashIcon() {
 			<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
 		</svg>
 	);
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
+  );
 }
 
 /* ─── Editor Component ───────────────────────────────────────── */
@@ -131,7 +153,7 @@ function NoteEditor({
 			}
 		}, 800);
 		return () => clearTimeout(timer);
-	}, [content]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [content, loading, activeNote.id, activeNote.noteKey, updateNote]);
 
 	// Auto-save title on change (800ms debounce)
 	useEffect(() => {
@@ -157,7 +179,7 @@ function NoteEditor({
 			}
 		}, 800);
 		return () => clearTimeout(timer);
-	}, [title]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [title, loading, activeNote.id, activeNote.noteKey, updateNote]);
 
 	if (loading) {
 		return (
@@ -250,8 +272,24 @@ export default function DashboardPage() {
 		setActiveNoteId,
 	} = useNotesStore();
 	const [loadingNotes, setLoadingNotes] = useState(true);
+	const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+	const [selectedNoteForShare, setSelectedNoteForShare] = useState<DecryptedNote | null>(null);
+	
+	// Shared notes state
+	const [activeTab, setActiveTab] = useState<"my" | "shared">("my");
+	const [loadingSharedNotes, setLoadingSharedNotes] = useState(false);
+	const { 
+		sharedNotes, 
+		activeSharedNoteId, 
+		setSharedNotes, 
+		setActiveSharedNoteId,
+		clearSharedNotes 
+	} = useSharedNotesStore();
 
 	const activeNote = notes.find((n) => n.id === activeNoteId);
+	const activeSharedNote = activeTab === "shared" 
+	  ? sharedNotes.find((n) => n.shareId === activeSharedNoteId)
+	  : null;
 
 	// Guard: redirect if no session (derivedKey is lost on refresh since it's in-memory)
 	useEffect(() => {
@@ -259,15 +297,23 @@ export default function DashboardPage() {
 			// Clear stale cookie if it exists
 			fetch("/api/auth/session", { method: "DELETE" });
 			clearSession();
+			clearSharedNotes();
 			router.replace("/signin");
 		}
-	}, [username, derivedKey, router, clearSession]);
+	}, [username, derivedKey, router, clearSession, clearSharedNotes]);
 
 	// Load and decrypt notes on mount
 	useEffect(() => {
 		if (!derivedKey) return;
 		loadNotes();
 	}, [derivedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// Load shared notes when switching to shared tab
+	useEffect(() => {
+		if (activeTab === "shared" && derivedKey && username) {
+			loadSharedNotes();
+		}
+	}, [activeTab, derivedKey, username]);
 
 	async function loadNotes() {
 		try {
@@ -305,11 +351,87 @@ export default function DashboardPage() {
 			);
 
 			setNotes(decrypted);
-			if (decrypted.length > 0) setActiveNoteId(decrypted[0].id);
+			if (decrypted.length > 0 && activeTab === "my") setActiveNoteId(decrypted[0].id);
 		} catch (err) {
 			console.error("Failed to load notes:", err);
 		} finally {
 			setLoadingNotes(false);
+		}
+	}
+
+	async function loadSharedNotes() {
+		if (!derivedKey || !username) return;
+		
+		try {
+			setLoadingSharedNotes(true);
+			const res = await fetch("/api/notes/shared");
+			if (!res.ok) {
+				throw new Error("Failed to load shared notes");
+			}
+			
+			const { sharedNotes: encryptedSharedNotes } = await res.json();
+			
+			if (!encryptedSharedNotes || encryptedSharedNotes.length === 0) {
+				setSharedNotes([]);
+				return;
+			}
+			
+			// Fetch current user's ECDH private key for unwrapping
+			const userRes = await fetch(`/api/users/${encodeURIComponent(username)}/ecdh-private-key`);
+			if (!userRes.ok) {
+				throw new Error("Failed to fetch your ECDH keys");
+			}
+			const { ecdh_private_key_cipher, ecdh_private_key_iv } = await userRes.json();
+			
+			// For each shared note, unwrap the note key and decrypt title
+			// In the map function inside loadSharedNotes, add safety checks
+const decryptedSharedNotes: SharedDecryptedNote[] = await Promise.all(
+  encryptedSharedNotes
+    .filter((sharedNote: any) => sharedNote.note !== null) // Filter out invalid notes
+    .map(async (sharedNote: any) => {
+      // Fetch sender's public key
+      const senderRes = await fetch(`/api/users/${encodeURIComponent(sharedNote.sender.username)}/public-key`);
+      const { public_key: senderPublicKey } = await senderRes.json();
+      
+      // Unwrap note key using receiver's private key + sender's public key
+      const noteKey = await unwrapNoteKeyFromSender(
+        sharedNote.wrappedKeyCipher,
+        sharedNote.wrappedKeyIv,
+        derivedKey,
+        ecdh_private_key_cipher,
+        ecdh_private_key_iv,
+        senderPublicKey
+      );
+      
+      // Decrypt title
+      const title = await decrypt(
+        noteKey,
+        sharedNote.note.titleCipher,
+        sharedNote.note.titleIv
+      );
+      
+      return {
+        shareId: sharedNote.shareId,
+        noteId: sharedNote.noteId,
+        title,
+        content_cipher: sharedNote.note.contentCipher,
+        content_iv: sharedNote.note.contentIv,
+        noteKey,
+        senderUsername: sharedNote.sender.username,
+        sharedAt: sharedNote.sharedAt,
+        createdAt: sharedNote.note.createdAt,
+      };
+    })
+);
+			
+			setSharedNotes(decryptedSharedNotes);
+			if (decryptedSharedNotes.length > 0 && activeTab === "shared") {
+				setActiveSharedNoteId(decryptedSharedNotes[0].shareId);
+			}
+		} catch (err) {
+			console.error("Failed to load shared notes:", err);
+		} finally {
+			setLoadingSharedNotes(false);
 		}
 	}
 
@@ -363,6 +485,8 @@ export default function DashboardPage() {
 				created_at: note.created_at,
 			});
 			setActiveNoteId(note.id);
+			// Switch to My Notes tab after creating
+			setActiveTab("my");
 		} catch (err) {
 			console.error("Failed to create note:", err);
 		}
@@ -381,235 +505,44 @@ export default function DashboardPage() {
 		// Clear server-side cookie
 		await fetch("/api/auth/session", { method: "DELETE" });
 		clearSession();
+		clearSharedNotes();
 		router.push("/");
 	}
 
 	if (!username) return null; // Prevent flash before redirect
 
 	return (
-		<div
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				minHeight: "100vh",
-			}}
-		>
-			{/* Top bar */}
-			<header className="topbar">
-				<div
-					className="font-mono"
-					style={{
-						fontSize: 13,
-						color: "var(--text-primary)",
-						letterSpacing: "0.06em",
-					}}
-				>
-					trustless<span style={{ color: "var(--accent)" }}>.</span>
-					notes
-				</div>
-
-				<div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+		<>
+			<div
+				style={{
+					display: "flex",
+					flexDirection: "column",
+					minHeight: "100vh",
+				}}
+			>
+				{/* Top bar */}
+				<header className="topbar">
 					<div
 						className="font-mono"
 						style={{
-							fontSize: 12,
-							color: "var(--text-secondary)",
-							display: "flex",
-							alignItems: "center",
-							gap: 8,
+							fontSize: 13,
+							color: "var(--text-primary)",
+							letterSpacing: "0.06em",
 						}}
 					>
-						<span
-							style={{
-								width: 6,
-								height: 6,
-								borderRadius: "50%",
-								background: "#22c55e",
-								boxShadow: "0 0 6px #22c55e",
-								display: "inline-block",
-							}}
-						/>
-						{username}
+						trustless<span style={{ color: "var(--accent)" }}>.</span>
+						notes
 					</div>
 
-					<button
-						id="signout-btn"
-						onClick={handleSignOut}
-						className="btn btn-ghost"
-						style={{ fontSize: 12, padding: "7px 14px" }}
-					>
-						Sign Out
-					</button>
-				</div>
-			</header>
-
-			{/* Body */}
-			<div style={{ display: "flex", flex: 1 }}>
-				{/* Sidebar */}
-				<aside className="sidebar">
-					<div
-						className="font-mono"
-						style={{
-							fontSize: 11,
-							letterSpacing: "0.1em",
-							textTransform: "uppercase",
-							color: "var(--text-muted)",
-							padding: "4px 12px",
-							marginBottom: 8,
-						}}
-					>
-						My Notes
-					</div>
-
-					<Tooltip content="Create New Note" delayDuration={100}>
-						<button
-							id="new-note-btn"
-							className="btn btn-secondary"
-							style={{
-								width: "100%",
-								justifyContent: "flex-start",
-								gap: 10,
-								fontSize: 13,
-								padding: "10px 14px",
-							}}
-							onClick={createNote}
-						>
-							<PlusIcon />
-							New Note
-						</button>
-					</Tooltip>
-
-					{loadingNotes ? (
-						<div
-							style={{
-								padding: "20px 12px",
-								display: "flex",
-								alignItems: "center",
-								gap: 10,
-							}}
-						>
-							<div className="spinner" />
-							<span
-								className="font-mono"
-								style={{
-									fontSize: 11,
-									color: "var(--text-muted)",
-								}}
-							>
-								Decrypting…
-							</span>
-						</div>
-					) : (
-						<ul style={{ listStyle: "none", marginTop: 4 }}>
-							{notes.map((note) => (
-								<li
-									key={note.id}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 4,
-									}}
-								>
-									<button
-										className="btn btn-ghost"
-										onClick={() => setActiveNoteId(note.id)}
-										style={{
-											flex: 1,
-											fontSize: 13,
-											textAlign: "left",
-											justifyContent: "flex-start",
-											padding: "8px 12px",
-											background:
-												note.id === activeNoteId
-													? "rgba(230, 57, 70, 0.08)"
-													: "transparent",
-											color:
-												note.id === activeNoteId
-													? "var(--accent)"
-													: "var(--text-secondary)",
-											borderRadius: 6,
-											overflow: "hidden",
-											textOverflow: "ellipsis",
-											whiteSpace: "nowrap",
-										}}
-									>
-										{note.title || "Untitled"}
-									</button>
-									<Tooltip
-										content="Delete"
-										delayDuration={200}
-									>
-										<button
-											className="btn btn-ghost"
-											onClick={() =>
-												handleDeleteNote(note.id)
-											}
-											style={{
-												padding: "6px 8px",
-												color: "var(--text-muted)",
-												flexShrink: 0,
-											}}
-										>
-											<TrashIcon />
-										</button>
-									</Tooltip>
-								</li>
-							))}
-						</ul>
-					)}
-				</aside>
-
-				{/* Main content */}
-				{activeNote && derivedKey ? (
-					<NoteEditor
-						key={activeNote.id}
-						activeNote={activeNote}
-						derivedKey={derivedKey}
-					/>
-				) : (
-					<main
-						style={{
-							flex: 1,
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "center",
-							flexDirection: "column",
-							gap: 16,
-							padding: 40,
-						}}
-					>
-						<LockIcon />
-
-						<h2
-							style={{
-								fontSize: 18,
-								fontWeight: 500,
-								color: "var(--text-secondary)",
-								textAlign: "center",
-							}}
-						>
-							{loadingNotes
-								? "Loading notes…"
-								: notes.length === 0
-									? "Create your first note"
-									: "Select a note"}
-						</h2>
-
-						{/* Status chip */}
+					<div style={{ display: "flex", alignItems: "center", gap: 16 }}>
 						<div
 							className="font-mono"
 							style={{
-								display: "inline-flex",
+								fontSize: 12,
+								color: "var(--text-secondary)",
+								display: "flex",
 								alignItems: "center",
 								gap: 8,
-								background: "rgba(34, 197, 94, 0.06)",
-								border: "1px solid rgba(34, 197, 94, 0.15)",
-								borderRadius: 100,
-								padding: "7px 16px",
-								fontSize: 11,
-								color: "#4ade80",
-								letterSpacing: "0.08em",
-								marginTop: 8,
 							}}
 						>
 							<span
@@ -622,11 +555,270 @@ export default function DashboardPage() {
 									display: "inline-block",
 								}}
 							/>
-							Key derived · Session active
+							{username}
 						</div>
-					</main>
-				)}
+
+						<button
+							id="signout-btn"
+							onClick={handleSignOut}
+							className="btn btn-ghost"
+							style={{ fontSize: 12, padding: "7px 14px" }}
+						>
+							Sign Out
+						</button>
+					</div>
+				</header>
+
+				{/* Body */}
+				<div style={{ display: "flex", flex: 1 }}>
+					{/* Sidebar */}
+					<aside className="sidebar">
+						{/* Tab Switcher */}
+						<div style={{ display: "flex", gap: 8, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+							<button
+								onClick={() => setActiveTab("my")}
+								style={{
+									flex: 1,
+									background: activeTab === "my" ? "rgba(230, 57, 70, 0.1)" : "transparent",
+									border: activeTab === "my" ? "1px solid rgba(230, 57, 70, 0.3)" : "1px solid var(--border)",
+									borderRadius: 6,
+									padding: "8px 12px",
+									fontSize: 12,
+									fontWeight: 500,
+									color: activeTab === "my" ? "var(--accent)" : "var(--text-secondary)",
+									cursor: "pointer",
+									fontFamily: "monospace",
+								}}
+							>
+								My Notes
+							</button>
+							<button
+								onClick={() => setActiveTab("shared")}
+								style={{
+									flex: 1,
+									background: activeTab === "shared" ? "rgba(230, 57, 70, 0.1)" : "transparent",
+									border: activeTab === "shared" ? "1px solid rgba(230, 57, 70, 0.3)" : "1px solid var(--border)",
+									borderRadius: 6,
+									padding: "8px 12px",
+									fontSize: 12,
+									fontWeight: 500,
+									color: activeTab === "shared" ? "var(--accent)" : "var(--text-secondary)",
+									cursor: "pointer",
+									fontFamily: "monospace",
+								}}
+							>
+								Shared with me {sharedNotes.length > 0 && `(${sharedNotes.length})`}
+							</button>
+						</div>
+
+						{activeTab === "my" ? (
+							<>
+								<div
+									className="font-mono"
+									style={{
+										fontSize: 11,
+										letterSpacing: "0.1em",
+										textTransform: "uppercase",
+										color: "var(--text-muted)",
+										padding: "4px 12px",
+										marginBottom: 8,
+									}}
+								>
+									My Notes
+								</div>
+
+								<Tooltip content="Create New Note" delayDuration={100}>
+									<button
+										id="new-note-btn"
+										className="btn btn-secondary"
+										style={{
+											width: "100%",
+											justifyContent: "flex-start",
+											gap: 10,
+											fontSize: 13,
+											padding: "10px 14px",
+										}}
+										onClick={createNote}
+									>
+										<PlusIcon />
+										New Note
+									</button>
+								</Tooltip>
+
+								{loadingNotes ? (
+									<div style={{ padding: "20px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+										<div className="spinner" />
+										<span className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+											Decrypting…
+										</span>
+									</div>
+								) : notes.length === 0 ? (
+									<div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+										No notes yet. Create one!
+									</div>
+								) : (
+									<ul style={{ listStyle: "none", marginTop: 4 }}>
+										{notes.map((note) => (
+											<li key={note.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+												<button
+													className="btn btn-ghost"
+													onClick={() => setActiveNoteId(note.id)}
+													style={{
+														flex: 1,
+														fontSize: 13,
+														textAlign: "left",
+														justifyContent: "flex-start",
+														padding: "8px 12px",
+														background: note.id === activeNoteId ? "rgba(230, 57, 70, 0.08)" : "transparent",
+														color: note.id === activeNoteId ? "var(--accent)" : "var(--text-secondary)",
+														borderRadius: 6,
+														overflow: "hidden",
+														textOverflow: "ellipsis",
+														whiteSpace: "nowrap",
+													}}
+												>
+													{note.title || "Untitled"}
+												</button>
+												
+												<Tooltip content="Share" delayDuration={200}>
+													<button
+														className="btn btn-ghost"
+														onClick={() => {
+															setSelectedNoteForShare(note);
+															setIsShareModalOpen(true);
+														}}
+														style={{ padding: "6px 8px", color: "var(--text-muted)", flexShrink: 0 }}
+													>
+														<ShareIcon />
+													</button>
+												</Tooltip>
+												
+												<Tooltip content="Delete" delayDuration={200}>
+													<button
+														className="btn btn-ghost"
+														onClick={() => handleDeleteNote(note.id)}
+														style={{ padding: "6px 8px", color: "var(--text-muted)", flexShrink: 0 }}
+													>
+														<TrashIcon />
+													</button>
+												</Tooltip>
+											</li>
+										))}
+									</ul>
+								)}
+							</>
+						) : (
+							<>
+								<div
+									className="font-mono"
+									style={{
+										fontSize: 11,
+										letterSpacing: "0.1em",
+										textTransform: "uppercase",
+										color: "var(--text-muted)",
+										padding: "4px 12px",
+										marginBottom: 8,
+									}}
+								>
+									Shared with me
+								</div>
+
+								{loadingSharedNotes ? (
+									<div style={{ padding: "20px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+										<div className="spinner" />
+										<span className="font-mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+											Loading shared notes…
+										</span>
+									</div>
+								) : sharedNotes.length === 0 ? (
+									<div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+										No notes shared with you yet
+									</div>
+								) : (
+									<ul style={{ listStyle: "none", marginTop: 4 }}>
+										{sharedNotes.map((note) => (
+											<li key={note.shareId} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+												<button
+													className="btn btn-ghost"
+													onClick={() => setActiveSharedNoteId(note.shareId)}
+													style={{
+														flex: 1,
+														fontSize: 13,
+														textAlign: "left",
+														justifyContent: "flex-start",
+														padding: "8px 12px",
+														background: note.shareId === activeSharedNoteId ? "rgba(230, 57, 70, 0.08)" : "transparent",
+														color: note.shareId === activeSharedNoteId ? "var(--accent)" : "var(--text-secondary)",
+														borderRadius: 6,
+														overflow: "hidden",
+														textOverflow: "ellipsis",
+														whiteSpace: "nowrap",
+													}}
+												>
+													{note.title || "Untitled"}
+													<span style={{ marginLeft: 8, fontSize: 10, color: "var(--text-muted)" }}>
+														from {note.senderUsername}
+													</span>
+												</button>
+											</li>
+										))}
+									</ul>
+								)}
+							</>
+						)}
+					</aside>
+
+					{/* Main content */}
+					{activeTab === "my" ? (
+						activeNote && derivedKey ? (
+							<NoteEditor key={activeNote.id} activeNote={activeNote} derivedKey={derivedKey} />
+						) : (
+							<main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 40 }}>
+								<LockIcon />
+								<h2 style={{ fontSize: 18, fontWeight: 500, color: "var(--text-secondary)", textAlign: "center" }}>
+									{loadingNotes ? "Loading notes…" : notes.length === 0 ? "Create your first note" : "Select a note"}
+								</h2>
+								{!loadingNotes && notes.length === 0 && (
+									<button className="btn btn-primary" onClick={createNote} style={{ marginTop: 8 }}>
+										Create Note
+									</button>
+								)}
+								<div className="font-mono" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.15)", borderRadius: 100, padding: "7px 16px", fontSize: 11, color: "#4ade80", letterSpacing: "0.08em", marginTop: 8 }}>
+									<span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", display: "inline-block" }} />
+									Key derived · Session active
+								</div>
+							</main>
+						)
+					) : (
+						activeSharedNote ? (
+							<SharedNoteEditor activeNote={activeSharedNote} />
+						) : (
+							<main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 40 }}>
+								<LockIcon />
+								<h2 style={{ fontSize: 18, fontWeight: 500, color: "var(--text-secondary)", textAlign: "center" }}>
+									{loadingSharedNotes ? "Loading shared notes…" : sharedNotes.length === 0 ? "No shared notes" : "Select a shared note"}
+								</h2>
+							</main>
+						)
+					)}
+				</div>
 			</div>
-		</div>
+			
+			{/* Share Modal */}
+			{selectedNoteForShare && (
+				<ShareModal
+					isOpen={isShareModalOpen}
+					onClose={() => {
+						setIsShareModalOpen(false);
+						setSelectedNoteForShare(null);
+					}}
+					noteId={selectedNoteForShare.id}
+					noteTitle={selectedNoteForShare.title}
+					onShareSuccess={() => {
+						console.log("Note shared successfully");
+					}}
+				/>
+			)}
+		</>
 	);
 }
