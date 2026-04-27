@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Tooltip } from "@radix-ui/themes";
 import { useSessionStore } from "@/store/session";
-import { useNotesStore, DecryptedNote } from "@/store/notes";
-import { encrypt, decrypt, wrapNoteKey, unwrapNoteKey, unwrapNoteKeyFromSender } from "@/lib/crypto";
 import ShareModal from "./components/ShareModal";
 import { useSharedNotesStore, SharedDecryptedNote } from "@/store/sharedNotes";
 import SharedNoteEditor from "./components/SharedNoteEditor";
+import { encrypt, decrypt, wrapNoteKey, unwrapNoteKey, unwrapNoteKeyFromSender, encryptAttachments, decryptAttachments } from "@/lib/crypto";
+import { useNotesStore, DecryptedNote, DecryptedAttachment } from "@/store/notes";
+import ImageDock from "./components/ImageDock";
 
 /* ─── Icons ──────────────────────────────────────────────────── */
 function LockIcon() {
@@ -181,6 +182,38 @@ function NoteEditor({
 		return () => clearTimeout(timer);
 	}, [title, loading, activeNote.id, activeNote.noteKey, updateNote]);
 
+	// Called by ImageDock when user adds or removes an image
+    async function handleAttachmentsChange(updated: DecryptedAttachment[]) {
+        try {
+            // Convert blob URLs back to raw base64 for encryption
+            const raw = updated.map((a) => ({
+                name: a.name,
+                mimeType: a.mimeType,
+                data: a.blobUrl.split(",")[1], // strip the data:mime;base64, prefix
+            }));
+
+            const { cipher, iv } = await encryptAttachments(raw, activeNote.noteKey);
+
+            await fetch("/api/notes/update", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: activeNote.id,
+                    attachments_cipher: cipher,
+                    attachments_iv: iv,
+                }),
+            });
+
+            updateNote(activeNote.id, {
+                attachments: updated,
+                attachments_cipher: cipher,
+                attachments_iv: iv,
+            });
+        } catch (err) {
+            console.error("Failed to save attachments:", err);
+        }
+    }
+
 	if (loading) {
 		return (
 			<main
@@ -244,6 +277,7 @@ function NoteEditor({
 				placeholder="Start typing your encrypted note…"
 				style={{
 					flex: 1,
+					maxHeight: "60vh",
 					background: "transparent",
 					border: "none",
 					outline: "none",
@@ -254,6 +288,11 @@ function NoteEditor({
 					color: "var(--text-primary)",
 					fontFamily: "var(--font-sans)",
 				}}
+			/>
+			{/* Image dock */}
+            <ImageDock
+                attachments={activeNote.attachments ?? []}
+                onAttachmentsChange={handleAttachmentsChange}
 			/>
 		</main>
 	);
@@ -339,6 +378,20 @@ export default function DashboardPage() {
 						note.title_cipher,
 						note.title_iv,
 					);
+					// Decrypt attachments if they exist
+					let attachments: DecryptedAttachment[] = [];
+					if (note.attachments_cipher && note.attachments_iv) {
+						const raw = await decryptAttachments(
+							note.attachments_cipher,
+							note.attachments_iv,
+							noteKey,
+						);
+						attachments = raw.map((a) => ({
+							name: a.name,
+							mimeType: a.mimeType,
+							blobUrl: `data:${a.mimeType};base64,${a.data}`,
+						}));
+					}
 					return {
 						id: note.id,
 						title,
@@ -346,6 +399,9 @@ export default function DashboardPage() {
 						content_iv: note.content_iv,
 						noteKey,
 						created_at: note.created_at,
+						attachments_cipher: note.attachments_cipher ?? null,
+						attachments_iv: note.attachments_iv ?? null,
+						attachments,
 					};
 				}),
 			);
@@ -385,44 +441,63 @@ export default function DashboardPage() {
 			
 			// For each shared note, unwrap the note key and decrypt title
 			// In the map function inside loadSharedNotes, add safety checks
-const decryptedSharedNotes: SharedDecryptedNote[] = await Promise.all(
-  encryptedSharedNotes
-    .filter((sharedNote: any) => sharedNote.note !== null) // Filter out invalid notes
-    .map(async (sharedNote: any) => {
-      // Fetch sender's public key
-      const senderRes = await fetch(`/api/users/${encodeURIComponent(sharedNote.sender.username)}/public-key`);
-      const { public_key: senderPublicKey } = await senderRes.json();
+            const decryptedSharedNotes: SharedDecryptedNote[] = await Promise.all(
+		    encryptedSharedNotes
+			.filter((sharedNote: any) => sharedNote.note !== null) // Filter out invalid notes
+			.map(async (sharedNote: any) => {
+			// Fetch sender's public key
+			const senderRes = await fetch(`/api/users/${encodeURIComponent(sharedNote.sender.username)}/public-key`);
+			const { public_key: senderPublicKey } = await senderRes.json();
+			
+			// Unwrap note key using receiver's private key + sender's public key
+			const noteKey = await unwrapNoteKeyFromSender(
+				sharedNote.wrappedKeyCipher,
+				sharedNote.wrappedKeyIv,
+				derivedKey,
+				ecdh_private_key_cipher,
+				ecdh_private_key_iv,
+				senderPublicKey
+			);
+
+			// Decrypt title
+			const title = await decrypt(
+				noteKey,
+				sharedNote.note.titleCipher,
+				sharedNote.note.titleIv
+			);
+
+			// Decrypt attachments if they exist
+			let attachments: DecryptedAttachment[] = [];
+			if (sharedNote.note.attachmentsCipher && sharedNote.note.attachmentsIv) {
+				const raw = await decryptAttachments(
+					sharedNote.note.attachmentsCipher,
+					sharedNote.note.attachmentsIv,
+					noteKey,
+				);
+				attachments = raw.map((a) => ({
+					name: a.name,
+					mimeType: a.mimeType,
+					blobUrl: `data:${a.mimeType};base64,${a.data}`,
+				}));
+			}
+
       
-      // Unwrap note key using receiver's private key + sender's public key
-      const noteKey = await unwrapNoteKeyFromSender(
-        sharedNote.wrappedKeyCipher,
-        sharedNote.wrappedKeyIv,
-        derivedKey,
-        ecdh_private_key_cipher,
-        ecdh_private_key_iv,
-        senderPublicKey
-      );
+			
       
-      // Decrypt title
-      const title = await decrypt(
-        noteKey,
-        sharedNote.note.titleCipher,
-        sharedNote.note.titleIv
-      );
-      
-      return {
-        shareId: sharedNote.shareId,
-        noteId: sharedNote.noteId,
-        title,
-        content_cipher: sharedNote.note.contentCipher,
-        content_iv: sharedNote.note.contentIv,
-        noteKey,
-        senderUsername: sharedNote.sender.username,
-        sharedAt: sharedNote.sharedAt,
-        createdAt: sharedNote.note.createdAt,
-      };
-    })
-);
+			return {
+				shareId: sharedNote.shareId,
+				noteId: sharedNote.noteId,
+				title,
+				content_cipher: sharedNote.note.contentCipher,
+				content_iv: sharedNote.note.contentIv,
+				noteKey,
+				senderUsername: sharedNote.sender.username,
+				sharedAt: sharedNote.sharedAt,
+				createdAt: sharedNote.note.createdAt,
+				attachments,
+			};
+       })
+	);
 			
 			setSharedNotes(decryptedSharedNotes);
 			if (decryptedSharedNotes.length > 0 && activeTab === "shared") {

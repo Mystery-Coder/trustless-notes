@@ -65,7 +65,7 @@ export async function GET() {
         // Fetch note data
         const { data: note } = await supabase
           .from("notes")
-          .select("id, title_cipher, title_iv, content_cipher, content_iv, created_at")
+          .select("id, title_cipher, title_iv, content_cipher, content_iv, attachments_cipher, attachments_iv, created_at")
           .eq("id", shared.note_id)
           .single();
         console.log("🔵 Note found:", !!note);
@@ -84,6 +84,8 @@ export async function GET() {
             titleIv: note.title_iv,
             contentCipher: note.content_cipher,
             contentIv: note.content_iv,
+            attachmentsCipher: note.attachments_cipher ?? null,   // new
+            attachmentsIv: note.attachments_iv ?? null,           // new
             createdAt: note.created_at,
           } : null,
         };

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { decrypt } from "@/lib/crypto";
 import { SharedDecryptedNote } from "@/store/sharedNotes";
+import ImageDock from "./ImageDock";
 
 function SharedNoteEditor({
   activeNote,
@@ -113,6 +114,7 @@ function SharedNoteEditor({
         readOnly
         style={{
           flex: 1,
+          maxHeight: "30vh",
           background: "rgba(255,255,255,0.02)",
           border: "none",
           outline: "none",
@@ -124,6 +126,12 @@ function SharedNoteEditor({
           fontFamily: "var(--font-sans)",
           cursor: "default",
         }}
+      />
+      {/* Image dock — read only, no onAttachmentsChange needed */}
+      <ImageDock
+          attachments={activeNote.attachments ?? []}
+          onAttachmentsChange={() => {}}
+          readOnly
       />
       
       {/* Read-only indicator */}

@@ -6,7 +6,12 @@ export async function POST(req: NextRequest) {
   try {
     const username = await getSessionUser()
     const body = await req.json()
-    const { title_cipher, title_iv, content_cipher, content_iv, wrapped_key_cipher, wrapped_key_iv } = body
+    const { 
+      title_cipher, title_iv, 
+      content_cipher, content_iv, 
+      wrapped_key_cipher, wrapped_key_iv,
+      attachments_cipher, attachments_iv  // new
+    } = body
 
     const { data: user } = await supabase
       .from("users")
@@ -25,7 +30,9 @@ export async function POST(req: NextRequest) {
         content_cipher,
         content_iv,
         wrapped_key_cipher,
-        wrapped_key_iv
+        wrapped_key_iv,
+        attachments_cipher: attachments_cipher ?? null,  // new
+        attachments_iv: attachments_iv ?? null
       })
       .select()
       .single()

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DecryptedAttachment } from "@/store/notes";
 
 export interface SharedDecryptedNote {
   shareId: string;
@@ -10,6 +11,7 @@ export interface SharedDecryptedNote {
   senderUsername: string;
   sharedAt: string;
   createdAt: string;
+  attachments: DecryptedAttachment[];
 }
 
 interface SharedNotesStore {

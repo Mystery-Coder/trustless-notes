@@ -365,3 +365,32 @@ export async function unwrapNoteKeyFromSender(
 	// 4. Unwrap the note key using the derived shared AES key
 	return await unwrapNoteKey(wrappedKeyCipher, wrappedKeyIv, sharedAesKey);
 }
+
+/**
+ * Encrypts an array of image attachments using the note's AES key.
+ * Each attachment: { name, mimeType, data } where data is base64-encoded image bytes.
+ * The whole array is JSON-stringified then encrypted as one blob.
+ *
+ * @returns { cipher, iv } — both base64-encoded strings
+ */
+export async function encryptAttachments(
+    attachments: { name: string; mimeType: string; data: string }[],
+    noteKey: CryptoKey,
+): Promise<{ cipher: string; iv: string }> {
+    const json = JSON.stringify(attachments);
+    return await encrypt(noteKey, json);
+}
+
+/**
+ * Decrypts the attachments blob and returns the array.
+ * Each item: { name, mimeType, data } where data is base64-encoded image bytes.
+ * Caller converts data → Blob URL for rendering.
+ */
+export async function decryptAttachments(
+    cipher: string,
+    iv: string,
+    noteKey: CryptoKey,
+): Promise<{ name: string; mimeType: string; data: string }[]> {
+    const json = await decrypt(noteKey, cipher, iv);
+    return JSON.parse(json);
+}

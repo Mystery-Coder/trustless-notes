@@ -1,5 +1,11 @@
 import { create } from "zustand"
 
+export interface DecryptedAttachment {
+  name: string
+  mimeType: string
+  blobUrl: string  // created from base64 after decryption, lives in memory only
+}
+
 export interface DecryptedNote {
   id: string
   title: string
@@ -7,6 +13,9 @@ export interface DecryptedNote {
   content_iv: string
   noteKey: CryptoKey
   created_at: string
+  attachments_cipher: string | null   // raw ciphertext from DB
+  attachments_iv: string | null       // raw iv from DB
+  attachments: DecryptedAttachment[]  // decrypted, ready to render
 }
 
 interface NotesStore {
