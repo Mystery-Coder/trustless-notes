@@ -394,3 +394,46 @@ export async function decryptAttachments(
     const json = await decrypt(noteKey, cipher, iv);
     return JSON.parse(json);
 }
+
+/**
+ * Encrypts a raw ArrayBuffer (image bytes) with AES-GCM using the note key.
+ * No base64 conversion — works directly on binary data.
+ *
+ * @returns { cipher: ArrayBuffer, iv: string } — cipher is raw bytes, iv is base64
+ */
+export async function encryptBuffer(
+    key: CryptoKey,
+    buffer: ArrayBuffer,
+): Promise<{ cipher: ArrayBuffer; iv: string }> {
+    const ivBuf = new ArrayBuffer(12);
+    const iv = new Uint8Array(ivBuf);
+    crypto.getRandomValues(iv);
+
+    const cipher = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        buffer,
+    );
+
+    return {
+        cipher,                          // raw ArrayBuffer — goes straight to Storage
+        iv: bytesToBase64(iv),           // base64 string — saved in DB
+    };
+}
+
+/**
+ * Decrypts a raw ArrayBuffer from Supabase Storage back to original image bytes.
+ *
+ * @returns decrypted ArrayBuffer — pass to new Blob([result], { type: mimeType })
+ */
+export async function decryptBuffer(
+    key: CryptoKey,
+    cipher: ArrayBuffer,
+    iv: string,
+): Promise<ArrayBuffer> {
+    return await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(iv) },
+        key,
+        cipher,
+    );
+}

@@ -1,9 +1,11 @@
 import { create } from "zustand"
 
 export interface DecryptedAttachment {
+  id: string           // DB row id — needed for delete
   name: string
   mimeType: string
-  blobUrl: string  // created from base64 after decryption, lives in memory only
+  storagePath: string  // needed for delete
+  blobUrl: string      // object URL, lives in memory only
 }
 
 export interface DecryptedNote {
@@ -13,9 +15,7 @@ export interface DecryptedNote {
   content_iv: string
   noteKey: CryptoKey
   created_at: string
-  attachments_cipher: string | null   // raw ciphertext from DB
-  attachments_iv: string | null       // raw iv from DB
-  attachments: DecryptedAttachment[]  // decrypted, ready to render
+  attachments: DecryptedAttachment[]
 }
 
 interface NotesStore {

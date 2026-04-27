@@ -28,6 +28,26 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    // Fetch all attachment storage paths for this note
+    const { data: attachments } = await supabase
+      .from("attachments")
+      .select("storage_path")
+      .eq("note_id", id)
+
+    // Delete files from Storage if any exist
+    if (attachments && attachments.length > 0) {
+      const paths = attachments.map((a) => a.storage_path)
+      const { error: storageError } = await supabase.storage
+        .from("attachments")
+        .remove(paths)
+
+      if (storageError) {
+        console.error("Storage cleanup error:", storageError)
+        // Don't block note deletion if storage cleanup fails
+      }
+    }
+
+    // Delete note — attachments rows cascade automatically
     await supabase.from("notes").delete().eq("id", id)
 
     return NextResponse.json({ success: true })

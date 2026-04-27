@@ -129,9 +129,12 @@ function SharedNoteEditor({
       />
       {/* Image dock — read only, no onAttachmentsChange needed */}
       <ImageDock
-          attachments={activeNote.attachments ?? []}
-          onAttachmentsChange={() => {}}
-          readOnly
+      noteId={activeNote.noteId}
+      noteKey={activeNote.noteKey}
+      attachments={activeNote.attachments ?? []}
+      onAttachmentAdded={() => {}}
+      onAttachmentRemoved={() => {}}
+      readOnly
       />
       
       {/* Read-only indicator */}

@@ -31,8 +31,6 @@ export async function POST(req: NextRequest) {
         content_iv,
         wrapped_key_cipher,
         wrapped_key_iv,
-        attachments_cipher: attachments_cipher ?? null,  // new
-        attachments_iv: attachments_iv ?? null
       })
       .select()
       .single()
