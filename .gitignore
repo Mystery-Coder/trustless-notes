@@ -37,6 +37,23 @@ yarn-error.log*
 # vercel
 .vercel
 
+# latex build artifacts
+LaTex/*.aux
+LaTex/*.log
+LaTex/*.out
+LaTex/*.toc
+LaTex/*.lof
+LaTex/*.lot
+LaTex/*.bbl
+LaTex/*.blg
+LaTex/*.brf
+LaTex/*.fdb_latexmk
+LaTex/*.fls
+LaTex/*.synctex.gz
+LaTex/*.xdv
+LaTex/*.dvi
+LaTex/*.pdf
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
