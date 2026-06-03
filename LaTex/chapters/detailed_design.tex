@@ -1,0 +1,212 @@
+% ============================================================
+% CHAPTER 4: ARCHITECTURE AND DETAILED DESIGN
+% ============================================================
+
+\chapter{Architecture and Detailed Design}
+
+The Detailed Design chapter of Trustless Notes focuses on the system architecture, data flow, and the cryptographic protocol that enables zero-knowledge operation. While the ER diagram defines the static structure of the database, the architectural diagrams provide a dynamic view of how data flows through encryption layers, how authentication works without password transmission, and how cryptographic key exchange enables secure note sharing.
+
+% ------------------------------------------------------------
+\section{System Architecture Overview}
+% ------------------------------------------------------------
+
+Trustless Notes follows a client-server architecture with a clear security boundary enforced by client-side encryption.
+
+\textbf{Client Layer (Browser):}
+\begin{itemize}
+    \item React application with Next.js App Router
+    \item Web Cryptography API for all cryptographic operations
+    \item Zustand in-memory state stores (session, notes, shared notes)
+    \item Cryptographic keys stored exclusively as non-extractable CryptoKey objects
+\end{itemize}
+
+\textbf{Server Layer (Next.js API Routes):}
+\begin{itemize}
+    \item RESTful API endpoints for data persistence and retrieval
+    \item HMAC-SHA256 signed cookie session management
+    \item Session user extraction for authorization checks
+    \item No decryption capability---operates exclusively on ciphertext
+\end{itemize}
+
+\textbf{Data Layer (Supabase):}
+\begin{itemize}
+    \item PostgreSQL database for relational data (users, notes, shared\_notes, attachments)
+    \item Supabase Storage for encrypted file blobs
+    \item Service-role key for server-side database access
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Data Flow Diagrams}
+% ------------------------------------------------------------
+
+% ............................................................
+\subsection{DFD Level 0 -- Context Diagram}
+% ............................................................
+
+The Level 0 Data Flow Diagram presents a high-level overview of the Trustless Notes system. The entire system is represented as a single process, with emphasis on defining system boundaries and illustrating how the system interacts with external entities.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{media/dfd0.jpeg}
+    \caption{DFD Level 0 -- Context Diagram}
+    \label{fig:dfd_level0}
+\end{figure}
+
+\textbf{External Entities:}
+
+\begin{itemize}
+    \item \textbf{User:} Represents the primary end users who interact with the system through the web browser. Users create accounts, sign in, manage notes, share notes, and upload attachments. All cryptographic operations---key derivation, encryption, decryption, and key exchange---occur in the user's browser.
+
+    \item \textbf{Administrator:} Represents the Supabase project administrator who manages the cloud infrastructure. The administrator has access to the database and storage layer but cannot decrypt user data due to the zero-knowledge architecture.
+\end{itemize}
+
+\textbf{Central Process:}
+
+\begin{itemize}
+    \item \textbf{Process 0: Trustless Notes System:} Encapsulates all system functionality including user authentication (without password transmission), note CRUD operations with client-side encryption, cryptographic note sharing via ECDH key exchange, and encrypted file attachment management.
+\end{itemize}
+
+% ............................................................
+\subsection{DFD Level 1 -- Process Decomposition}
+% ............................................................
+
+The Level 1 DFD provides a detailed breakdown of the overall system into interconnected subprocesses.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\textwidth]{media/dfd1.jpeg}
+    \caption{DFD Level 1 -- Process Decomposition}
+    \label{fig:dfd_level1}
+\end{figure}
+
+\textbf{Process 1.0: User Authentication:} Handles account creation and sign-in. On signup, the client derives a key from the password using PBKDF2, generates a random sentinel value, encrypts it with the derived key, generates an ECDH keypair, encrypts the private key, and sends only cryptographic artifacts to the server. On sign-in, the server returns sentinel data (real or fake), the client attempts decryption locally, and only on success sends the sentinel plaintext for server verification.
+
+\textbf{Process 2.0: Note Management:} Handles creation, reading, updating, and deletion of notes. Each note has a unique AES-256-GCM key. The title and content are encrypted separately with this note key, and the note key itself is wrapped (encrypted) with the user's derived key. The server stores only ciphertext and wrapped keys.
+
+\textbf{Process 3.0: Note Sharing:} Handles cryptographic note sharing between users. The sender fetches the recipient's ECDH public key, decrypts their own ECDH private key, computes the shared secret, derives an AES key via HKDF, and wraps the note key with this derived key. The server stores the re-wrapped key and the sender-receiver relationship.
+
+\textbf{Process 4.0: Attachment Management:} Handles encrypted file upload, download, and deletion. Files are read as ArrayBuffer, encrypted with the note key using AES-256-GCM, and uploaded to Supabase Storage as opaque blobs. Metadata including the IV is stored in the attachments table.
+
+% ------------------------------------------------------------
+\section{Cryptographic Protocol Design}
+% ------------------------------------------------------------
+
+% ............................................................
+\subsection{Key Derivation (PBKDF2)}
+% ............................................................
+
+When the user creates an account, the browser generates a cryptographically random 16-byte salt. The password is combined with this salt using PBKDF2 with HMAC-SHA256 for 200,000 iterations to produce a 256-bit AES-GCM key. The key is created with \texttt{extractable: false}, meaning it can never be exported from the Web Cryptography API as raw bytes---it exists only as an opaque CryptoKey handle in the browser's memory.
+
+\begin{verbatim}
+Password + Salt → PBKDF2(iterations=200000, hash=SHA-256)
+             → derivedKey (non-extractable CryptoKey)
+\end{verbatim}
+
+The salt is stored on the server so that the client can retrieve it on subsequent sign-ins and re-derive the same key.
+
+% ............................................................
+\subsection{Sentinel-Based Authentication}
+% ............................................................
+
+Authentication is performed without the password ever leaving the browser. On signup:
+\begin{enumerate}
+    \item A random 24-byte sentinel value is generated.
+    \item The sentinel is encrypted with the derived key using AES-256-GCM.
+    \item The SHA-256 hash of the plaintext sentinel is computed.
+    \item The ciphertext + IV is sent to the server; the password and plaintext sentinel are never transmitted.
+\end{enumerate}
+
+On sign-in:
+\begin{enumerate}
+    \item The server always returns sentinel ciphertext + IV (real data if the user exists, random indistinguishable data if not).
+    \item The client derives the key from the provided password and attempts AES-GCM decryption.
+    \item If decryption fails (wrong password or non-existent user), the client displays a generic error.
+    \item If decryption succeeds, the client sends the decrypted sentinel plaintext to the server.
+    \item The server computes SHA-256 of the received plaintext and compares it with the stored sentinel\_hash.
+    \item On match, the server issues a signed session cookie.
+\end{enumerate}
+
+This protocol prevents username enumeration because both real and fake responses are indistinguishable in size, format, and timing.
+
+% ............................................................
+\subsection{Per-Note Key Wrapping}
+% ............................................................
+
+Each note has its own randomly generated AES-256-GCM key:
+\begin{enumerate}
+    \item A new CryptoKey is generated with \texttt{extractable: true} (the note key must be exportable for wrapping).
+    \item The note key is exported as raw bytes and used to encrypt title and content separately.
+    \item The note key bytes are then encrypted (wrapped) with the user's non-extractable derived key.
+    \item The wrapped key ciphertext + IV is stored alongside the note's ciphertexts.
+\end{enumerate}
+
+On read, the process reverses: the wrapped key is decrypted with the derived key to recover the note key, which then decrypts the title and content.
+
+This design enables:
+\begin{itemize}
+    \item \textbf{Password rotation:} Re-wrapping all note keys with a new derived key without re-encrypting note content.
+    \item \textbf{Selective sharing:} Wrapping a specific note key for a recipient without exposing other notes.
+\end{itemize}
+
+% ............................................................
+\subsection{ECDH Key Exchange for Sharing}
+% ............................................................
+
+Note sharing uses Elliptic Curve Diffie-Hellman (ECDH) over the P-256 curve:
+
+\begin{verbatim}
+Sender's ECDH Private Key + Receiver's ECDH Public Key
+           → ECDH Shared Secret
+           → HKDF(salt=noteId, info="note-sharing")
+           → Shared AES-256-GCM Key
+           → Wrap Note Key with Shared AES Key
+\end{verbatim}
+
+On signup, each user generates an ECDH P-256 keypair. The public key is stored in plaintext (anyone can fetch it to share notes). The private key is encrypted with the user's derived key before storage.
+
+To share a note:
+\begin{enumerate}
+    \item Sender fetches recipient's public key (public endpoint, no authentication required).
+    \item Sender decrypts their own ECDH private key using their derived key.
+    \item Sender computes the ECDH shared secret from their private key and the recipient's public key.
+    \item Sender derives an AES-256-GCM key from the shared secret using HKDF with the note ID as salt.
+    \item Sender wraps the note key with this derived shared key.
+    \item Server stores the wrapped key with sender and receiver IDs.
+\end{enumerate}
+
+The recipient follows the same process in reverse: decrypt their own ECDH private key, compute the same shared secret using the sender's public key, derive the same AES key, and unwrap the note key.
+
+The server cannot derive the shared secret because it does not have access to either user's unencrypted ECDH private key.
+
+% ------------------------------------------------------------
+\section{Session Management}
+% ------------------------------------------------------------
+
+Sessions are managed using HMAC-SHA256 signed cookies. When a user successfully authenticates, the server creates a cookie containing the username and a cryptographic signature:
+
+\begin{verbatim}
+cookie = base64(username + "." + HMAC-SHA256(secret, username))
+\end{verbatim}
+
+The middleware (\texttt{proxy.ts}) verifies the cookie signature on all protected routes before allowing access to the dashboard. API routes extract the username from the cookie and verify the signature before processing requests. The signature prevents tampering---an attacker cannot forge a valid cookie without knowing the server's HMAC secret key.
+
+% ------------------------------------------------------------
+\section{Attachment Encryption Pipeline}
+% ------------------------------------------------------------
+
+File attachments follow a straightforward encryption pipeline:
+\begin{enumerate}
+    \item User selects a file (max 5 MB, image types).
+    \item File is read as ArrayBuffer via the FileReader API.
+    \item The buffer is encrypted with the note key using \texttt{crypto.subtle.encrypt} with AES-256-GCM, producing an encrypted ArrayBuffer.
+    \item The encrypted buffer is uploaded to Supabase Storage at path \texttt{\{userId\}/\{noteId\}/\{timestamp\}\_\{filename\}}.
+    \item Metadata (IV, original filename, MIME type, storage path) is recorded in the attachments table.
+\end{enumerate}
+
+On viewing, the encrypted blob is downloaded from Storage, decrypted with the note key, and displayed as an in-memory Blob URL. Decrypted data is never written to disk.
+
+% ------------------------------------------------------------
+\section{Summary}
+% ------------------------------------------------------------
+
+The architecture of Trustless Notes is built on a foundation of client-side cryptography with clear separation between encrypted data storage and decryption capability. The system demonstrates how modern web APIs can be combined to create a zero-knowledge application that protects user privacy even in the event of server compromise. The layered design---from PBKDF2 key derivation through AES-GCM encryption to ECDH-based key exchange---provides defense in depth while maintaining a practical, usable note-taking experience.

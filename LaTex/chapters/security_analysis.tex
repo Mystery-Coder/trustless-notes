@@ -1,0 +1,183 @@
+% ============================================================
+% CHAPTER 6: SECURITY ANALYSIS AND ATTACK SIMULATOR
+% ============================================================
+
+\chapter{Security Analysis and Attack Simulator}
+
+% ------------------------------------------------------------
+\section{Preamble}
+% ------------------------------------------------------------
+
+A fundamental property of zero-knowledge systems is that security must be verifiable---users should be able to understand why their data is protected and what threats the architecture defends against. Trustless Notes includes an integrated educational security simulator that demonstrates the system's resilience against common attack scenarios through interactive visualizations.
+
+This chapter analyzes the system's security properties across four attack scenarios and explains the cryptographic guarantees that make each attack ineffective.
+
+% ------------------------------------------------------------
+\section{Threat Model}
+% ------------------------------------------------------------
+
+Trustless Notes operates under the following threat model:
+
+\begin{itemize}
+    \item \textbf{Server Compromise:} An attacker gains full access to the Supabase database, storage, and API server. This includes read access to all tables and storage buckets.
+
+    \item \textbf{Service Key Leak:} An attacker obtains the Supabase service\_role key, granting full administrative access to the database and storage infrastructure.
+
+    \item \textbf{Network Interception:} An attacker can observe network traffic between the client and server.
+
+    \item \textbf{Cookie Theft:} An attacker steals the user's session cookie, potentially gaining authenticated API access.
+
+    \item \textbf{Password Guessing:} An attacker attempts to guess or brute-force the user's password.
+\end{itemize}
+
+\textbf{Out of Scope:}
+\begin{itemize}
+    \item Client-side malware/keyloggers that observe the password before key derivation.
+    \item Browser extension vulnerabilities that access page memory.
+    \item Physical access to the user's device.
+    \item Timing side-channel attacks on the Web Cryptography API implementation.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Attack Scenario 1: Database Leak}
+% ------------------------------------------------------------
+
+\subsection{Scenario Description}
+
+An attacker gains unauthorized read access to the Supabase PostgreSQL database. They can query all tables: \texttt{users}, \texttt{notes}, \texttt{shared\_notes}, and \texttt{attachments}.
+
+\subsection{Data Available to Attacker}
+
+\begin{itemize}
+    \item \textbf{users table:} username, ecdh\_public\_key, ecdh\_private\_key\_cipher, ecdh\_private\_key\_iv, salt, sentinel\_cipher, sentinel\_iv, sentinel\_hash
+    \item \textbf{notes table:} title\_cipher, title\_iv, content\_cipher, content\_iv, wrapped\_key\_cipher, wrapped\_key\_iv
+    \item \textbf{shared\_notes table:} wrapped\_key\_cipher, wrapped\_key\_iv, sender/receiver IDs
+    \item \textbf{attachments table:} storage\_path, iv (encrypted blob in Storage)
+\end{itemize}
+
+\subsection{Why the Attack Fails}
+
+The attacker possesses only ciphertext, IVs, and wrapped keys. To decrypt any data, they would need:
+
+\begin{enumerate}
+    \item The user's derived AES-256-GCM key, which is derived from the password + salt via PBKDF2 with 200,000 iterations of SHA-256.
+    \item The derived key is non-extractable---it exists only as an in-memory CryptoKey handle in the user's browser. It is never stored on the server or transmitted over the network.
+    \item Even with the ECDH private key ciphertext, the attacker cannot decrypt it without the derived key.
+    \item The sentinel ciphertext provides no useful information---it is a random value encrypted with an unknown key.
+\end{enumerate}
+
+\textbf{Verdict: The database leak reveals only encrypted data that is computationally infeasible to decrypt without the user's password-derived key.}
+
+% ------------------------------------------------------------
+\section{Attack Scenario 2: Password Leak}
+% ------------------------------------------------------------
+
+\subsection{Scenario Description}
+
+An attacker learns the user's password through phishing, password reuse on another compromised service, or social engineering.
+
+\subsection{What the Attacker Gains}
+
+\begin{enumerate}
+    \item The attacker can derive the same PBKDF2 key by using the salt retrieved from the server (salt is public, stored in the database).
+    \item With the derived key, the attacker can decrypt the sentinel and authenticate as the user.
+    \item With the derived key, the attacker can unwrap all note keys and decrypt all note content.
+    \item With the derived key, the attacker can decrypt the ECDH private key and use it to unwrap any notes shared with the user via ECDH.
+\end{enumerate}
+
+\subsection{Why the Architecture Still Provides Value}
+
+\begin{enumerate}
+    \item A server-side breach alone is insufficient---the attacker must also obtain the password through an external channel.
+    \item The security now depends on password strength. PBKDF2 with 200,000 iterations slows down brute-force attacks significantly (approximately 200,000 SHA-256 hashes per attempt).
+    \item Unlike traditional services, there is no "forgot password" mechanism that could leak data. In a zero-knowledge system, the password is the key---without it, data is permanently inaccessible.
+    \item Knowing the password does not compromise other users on the same server, since each user has an independent derived key.
+\end{enumerate}
+
+\textbf{Verdict: Password compromise is a serious breach, but it requires the attacker to obtain the password through means outside the system. The architecture ensures that a server breach alone is never sufficient.}
+
+% ------------------------------------------------------------
+\section{Attack Scenario 3: Cookie Forgery}
+% ------------------------------------------------------------
+
+\subsection{Scenario Description}
+
+An attacker steals the user's session cookie (via XSS, network sniffing on HTTP, or physical access) and uses it to make authenticated API requests.
+
+\subsection{What the Attacker Gains}
+
+The attacker can make API calls as the authenticated user:
+\begin{itemize}
+    \item \texttt{GET /api/notes} --- returns encrypted notes (ciphertext only, no plaintext)
+    \item \texttt{GET /api/notes/shared} --- returns encrypted shared notes
+    \item \texttt{GET /api/notes/attachments/[noteId]} --- returns attachment metadata
+    \item \texttt{GET /api/notes/attachments/download/[path]} --- returns encrypted blob
+\end{itemize}
+
+\subsection{Why the Attack Fails}
+
+The attacker receives only ciphertext and wrapped keys. The session cookie grants API access but does not provide the derived key, which is stored exclusively in the user's browser memory as a non-extractable CryptoKey. Without the derived key:
+
+\begin{itemize}
+    \item The attacker cannot decrypt note titles or content.
+    \item The attacker cannot unwrap note keys.
+    \item The attacker cannot decrypt file attachments.
+    \item The attacker cannot decrypt ECDH private keys to read shared notes.
+\end{itemize}
+
+Additionally, the signed cookie provides tamper detection. If the attacker attempts to modify the cookie (e.g., changing the username to impersonate another user), the HMAC-SHA256 signature verification fails and the request is rejected.
+
+\textbf{Verdict: Cookie theft grants access to ciphertext but provides no path to decryption. The derived key never leaves the browser and cannot be obtained through API access.}
+
+% ------------------------------------------------------------
+\section{Attack Scenario 4: Supabase Service Key Leak}
+% ------------------------------------------------------------
+
+\subsection{Scenario Description}
+
+An attacker obtains the Supabase \texttt{service\_role} key, which grants full administrative access to the Supabase project including:
+\begin{itemize}
+    \item Direct SQL queries on all tables
+    \item Read/write access to all Storage buckets
+    \item User management via Supabase Auth API
+    \item Ability to modify database schemas and Row-Level Security policies
+\end{itemize}
+
+\subsection{What the Attacker Gains}
+
+The attacker has the maximum possible level of server-side access:
+\begin{itemize}
+    \item Full read access to the \texttt{users} table (salts, sentinel hashes, encrypted ECDH private keys)
+    \item Full read access to the \texttt{notes} table (all ciphertext and wrapped keys)
+    \item Full read access to all encrypted blobs in Storage
+    \item Ability to delete or modify any data
+\end{itemize}
+
+\subsection{Why the Attack Fails}
+
+Even with complete server-side control, the attacker cannot decrypt user data because:
+
+\begin{enumerate}
+    \item The derived key is derived client-side from the user's password and salt. The service key provides access to the salt but not the password.
+    \item The attacker could attempt to modify the sign-in endpoint to return real sentinel data for any username, but the sentinel verification still requires the client to know the password-derived key.
+    \item The attacker could set up a malicious server that returns fake data, but the client-side code (served as static Next.js build artifacts) performs the cryptographic operations---the attacker would need to also compromise the code delivery pipeline.
+    \item The ECDH private key is stored encrypted. Without the derived key, the attacker cannot decrypt it.
+    \item The HMAC cookie signing key is stored in server environment variables, not in Supabase. Even with the service key, the attacker cannot forge valid cookies without the signing secret.
+\end{enumerate}
+
+\textbf{Verdict: Even full administrative access to the cloud infrastructure is insufficient to decrypt user data. The zero-knowledge architecture ensures that the server---and anyone who compromises it---operates exclusively on ciphertext.}
+
+% ------------------------------------------------------------
+\section{Security Simulator Implementation}
+% ------------------------------------------------------------
+
+The security simulator at the \texttt{/simulator} route implements all four scenarios as interactive, step-by-step visualizations. Key implementation details:
+
+\begin{itemize}
+    \item The simulator reimplements cryptographic operations using extractable keys for display purposes only, allowing the user to see intermediate values (keys, ciphertexts, plaintexts) that would normally be invisible.
+    \item Each scenario follows a narrative structure: a terminal typewriter effect introduces the attack, visual components demonstrate each step, and an analysis section explains why the attack succeeds or fails.
+    \item The scenarios use a standalone CSS file (\texttt{simulator.css}) with a dark, hacker-aesthetic theme independent of the main application styles.
+    \item Shared components include Terminal, StepChain, InputField, AnalysisTable, and GlitchText for consistent presentation.
+\end{itemize}
+
+The simulator serves both as an educational tool and as a verification mechanism---users can independently verify the cryptographic properties claimed by the system.

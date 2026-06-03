@@ -1,0 +1,240 @@
+% ============================================================
+% CHAPTER 5: CRYPTOGRAPHIC PROTOCOL
+% ============================================================
+
+\chapter{Cryptographic Protocol}
+
+Trustless Notes implements a layered cryptographic protocol that ensures the server never has access to plaintext user data. This chapter provides a detailed analysis of each cryptographic primitive used, the protocol flows for authentication and note sharing, and the security properties guaranteed by the design.
+
+% ------------------------------------------------------------
+\section{Cryptographic Primitives}
+% ------------------------------------------------------------
+
+The system uses four cryptographic primitives from the Web Cryptography API, each chosen for its security properties and browser compatibility:
+
+\begin{tabular}{lll}
+\toprule
+\textbf{Primitive} & \textbf{Purpose} & \textbf{Algorithm} \\
+\midrule
+PBKDF2 & Key derivation from password & HMAC-SHA256, 200,000 iterations \\
+AES-256-GCM & Symmetric encryption & 256-bit key, 96-bit IV, 128-bit auth tag \\
+ECDH & Asymmetric key exchange & P-256 (secp256r1) curve \\
+HKDF & Key derivation from shared secret & HMAC-SHA256 \\
+\bottomrule
+\end{tabular}
+
+\subsection{PBKDF2 -- Password-Based Key Derivation}
+
+PBKDF2 (Password-Based Key Derivation Function 2) is defined in RFC 2898 and NIST SP 800-132. It transforms a password and salt into a cryptographic key using a pseudorandom function applied iteratively.
+
+The system configures PBKDF2 with:
+\begin{itemize}
+    \item \textbf{Hash function:} SHA-256
+    \item \textbf{Iteration count:} 200,000
+    \item \textbf{Salt length:} 16 bytes (128 bits), generated using \texttt{crypto.getRandomValues()}
+    \item \textbf{Output length:} 256 bits (32 bytes)
+    \item \textbf{Key usage:} The derived key is created with usage flags \texttt{["encrypt", "decrypt"]} and critically, \texttt{extractable: false}
+\end{itemize}
+
+The iteration count of 200,000 is chosen to impose a significant computational cost on brute-force attacks while maintaining acceptable user experience (typically 500--1500ms on modern hardware). Each password guess requires 200,000 SHA-256 hash computations, making dictionary attacks approximately 200,000 times slower than direct hash verification.
+
+The salt ensures that identical passwords produce different derived keys across users, preventing precomputation attacks (rainbow tables). Because the salt is stored on the server (it is not secret), an attacker with database access still cannot precompute keys without knowing each user's salt.
+
+\subsection{AES-256-GCM -- Authenticated Symmetric Encryption}
+
+AES (Advanced Encryption Standard) in Galois/Counter Mode (GCM) provides both confidentiality and authenticity. GCM is a streaming mode that produces a ciphertext and an authentication tag, allowing the receiver to verify that the ciphertext has not been modified.
+
+The system configures AES-GCM with:
+\begin{itemize}
+    \item \textbf{Key size:} 256 bits
+    \item \textbf{IV (nonce) size:} 96 bits (12 bytes), randomly generated per encryption
+    \item \textbf{Authentication tag:} 128 bits (16 bytes), appended by the Web Cryptography API automatically
+\end{itemize}
+
+Each encryption operation generates a fresh random IV using \texttt{crypto.getRandomValues()}. The IV is stored alongside the ciphertext and is not secret---its purpose is to ensure that encrypting the same plaintext twice produces different ciphertexts. AES-GCM with a 96-bit IV can safely encrypt up to $2^{32}$ messages with the same key before IV reuse becomes a concern.
+
+AES-256 provides a 256-bit key space, which is resistant to brute-force attacks even with quantum computers (Grover's algorithm would reduce effective security to 128 bits, still computationally infeasible).
+
+\subsection{ECDH P-256 -- Elliptic Curve Diffie-Hellman Key Exchange}
+
+ECDH (Elliptic Curve Diffie-Hellman) allows two parties to establish a shared secret over an insecure channel. Each party has a keypair consisting of a private key (random scalar) and a public key (point on the curve). The shared secret is computed as:
+
+\[
+\text{SharedSecret} = \text{PrivateKey}_A \times \text{PublicKey}_B = \text{PrivateKey}_B \times \text{PublicKey}_A
+\]
+
+The system uses the P-256 curve (secp256r1), recommended by NIST for government applications. Each user generates an ECDH keypair on signup:
+\begin{itemize}
+    \item The public key is stored in plaintext in the \texttt{users} table and is publicly fetchable.
+    \item The private key is encrypted with the user's derived key before storage, ensuring that only the user (or someone with their derived key) can decrypt it.
+\end{itemize}
+
+The ECDH shared secret is not used directly as an encryption key. Instead, it is passed through HKDF to produce a properly distributed AES-256-GCM key.
+
+\subsection{HKDF -- HMAC-Based Key Derivation}
+
+HKDF (HMAC-based Key Derivation Function), defined in RFC 5869, derives one or more cryptographically strong keys from an input key material. It consists of two phases:
+
+\begin{enumerate}
+    \item \textbf{Extract:} The ECDH shared secret is combined with a salt (the note ID) using HMAC-SHA256 to produce a pseudorandom key.
+    \item \textbf{Expand:} The pseudorandom key is expanded with the context string \texttt{"note-sharing"} to produce a 256-bit AES-GCM key.
+\end{enumerate}
+
+The use of HKDF ensures that even if the same ECDH shared secret were somehow produced for different note-sharing operations (astronomically unlikely), the derived encryption keys would be different due to different note IDs used as salts.
+
+% ------------------------------------------------------------
+\section{Non-Extractable Key Design}
+% ------------------------------------------------------------
+
+A critical design decision is the use of non-extractable CryptoKey objects for the user's derived key. When a CryptoKey is created with \texttt{extractable: false}, the Web Cryptography API guarantees:
+
+\begin{itemize}
+    \item The key material cannot be exported using \texttt{crypto.subtle.exportKey()}.
+    \item The key cannot be serialized to any format (raw, JWK, PKCS8, etc.).
+    \item The key exists only as an opaque \texttt{CryptoKey} object handle in the JavaScript heap.
+    \item The key survives garbage collection but cannot be accessed as raw bytes.
+\end{itemize}
+
+This design prevents several classes of attacks:
+\begin{itemize}
+    \item \textbf{Cross-site scripting (XSS):} An attacker who achieves JavaScript execution cannot exfiltrate the key material because it is not accessible as bytes.
+    \item \textbf{Developer tools inspection:} Console access cannot reveal the key.
+    \item \textbf{Logging:} If a developer accidentally logs \texttt{derivedKey}, the output is \texttt{CryptoKey \{type: "secret"\}} with no key material.
+    \item \textbf{Memory dumps:} The key may exist in the Web Crypto API's internal memory but is not accessible through the JavaScript heap.
+\end{itemize}
+
+Note keys are created with \texttt{extractable: true} because they must be wrapped (encrypted with the derived key) for storage. However, note keys are themselves never stored in plaintext---they are always wrapped before transmission to the server.
+
+% ------------------------------------------------------------
+\section{Authentication Protocol (Detailed)}
+% ------------------------------------------------------------
+
+\subsection{Account Creation Protocol}
+
+\begin{enumerate}
+    \item \textbf{Client generates salt:} 16 random bytes using \texttt{crypto.getRandomValues()}.
+    \item \textbf{Client derives key:} \texttt{PBKDF2(password, salt, 200000 iterations) $\rightarrow$ derivedKey}.
+    \item \textbf{Client generates sentinel:} 24 random bytes. Encrypts with derivedKey to produce \{sentinelCipher, sentinelIv\}. Computes SHA-256 hash of plaintext sentinel.
+    \item \textbf{Client generates ECDH keypair:} Produces \{publicKey (JWK), privateKey (CryptoKey)\}. Encrypts privateKey with derivedKey.
+    \item \textbf{Client sends to server:} \{username, salt, sentinelCipher, sentinelIv, sentinelHash, publicKey, encryptedPrivateKey, encryptedPrivateKeyIv\}.
+    \item \textbf{Server stores:} All received values in the \texttt{users} table.
+    \item \textbf{Server returns:} Success response with user ID.
+\end{enumerate}
+
+The password never leaves the browser. The server cannot reconstruct the derived key because it lacks the password. The sentinel hash provides a verification mechanism without exposing the sentinel plaintext.
+
+\subsection{Sign-In Protocol}
+
+\begin{enumerate}
+    \item \textbf{Client sends:} \{username\} to \texttt{POST /api/auth/signin}.
+    \item \textbf{Server responds:} \{salt, sentinelCipher, sentinelIv\}. If the username does not exist, random data of matching length is returned (anti-enumeration).
+    \item \textbf{Client derives key:} \texttt{PBKDF2(password, salt, 200000 iterations) $\rightarrow$ derivedKey}.
+    \item \textbf{Client decrypts sentinel:} \texttt{AES-GCM-Decrypt(derivedKey, sentinelCipher, sentinelIv)}. If decryption fails (wrong password or fake data), display generic error.
+    \item \textbf{Client sends:} \{username, decryptedSentinelPlaintext\} to \texttt{POST /api/auth/session}.
+    \item \textbf{Server verifies:} Computes SHA-256(plaintext) and compares to stored sentinelHash. If match, issues signed cookie.
+\end{enumerate}
+
+The protocol ensures that:
+\begin{itemize}
+    \item The server cannot verify passwords directly (it does not have a password hash).
+    \item The server cannot determine whether a username exists from the signin response alone.
+    \item An attacker who intercepts network traffic sees only the sentinel ciphertext and IV, which are useless without the derived key.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Note Encryption Protocol}
+% ------------------------------------------------------------
+
+\subsection{Note Creation}
+
+\begin{enumerate}
+    \item \textbf{Generate note key:} \texttt{crypto.subtle.generateKey({name: "AES-GCM", length: 256}, true, ["encrypt", "decrypt"]) $\rightarrow$ noteKey}. This key is unique to this note.
+    \item \textbf{Export note key:} Export as raw bytes (noteKey is extractable).
+    \item \textbf{Encrypt title:} \texttt{AES-GCM-Encrypt(noteKey, title) $\rightarrow$ \{titleCipher, titleIv\}}.
+    \item \textbf{Encrypt content:} \texttt{AES-GCM-Encrypt(noteKey, content) $\rightarrow$ \{contentCipher, contentIv\}}.
+    \item \textbf{Wrap note key:} \texttt{AES-GCM-Encrypt(derivedKey, noteKeyBytes) $\rightarrow$ \{wrappedKey, wrappedKeyIv\}}.
+    \item \textbf{Send to server:} \{titleCipher, titleIv, contentCipher, contentIv, wrappedKey, wrappedKeyIv\}.
+\end{enumerate}
+
+\subsection{Note Reading}
+
+\begin{enumerate}
+    \item \textbf{Fetch from server:} \texttt{GET /api/notes} returns all note records for the user.
+    \item \textbf{Unwrap note key:} \texttt{AES-GCM-Decrypt(derivedKey, wrappedKey, wrappedKeyIv) $\rightarrow$ noteKeyBytes}. Import as CryptoKey.
+    \item \textbf{Decrypt title:} \texttt{AES-GCM-Decrypt(noteKey, titleCipher, titleIv) $\rightarrow$ plaintextTitle}.
+    \item \textbf{Decrypt content:} \texttt{AES-GCM-Decrypt(noteKey, contentCipher, contentIv) $\rightarrow$ plaintextContent}.
+\end{enumerate}
+
+\subsection{Note Update (Auto-Save)}
+
+The dashboard implements debounced auto-save (800ms delay):
+\begin{enumerate}
+    \item User edits title or content in the editor.
+    \item After 800ms of no further edits, the changed field is re-encrypted with the existing note key.
+    \item Only the changed ciphertexts are sent to \texttt{PATCH /api/notes/update}.
+    \item The server verifies note ownership before updating.
+\end{enumerate}
+
+This design minimizes network traffic while ensuring data is preserved.
+
+% ------------------------------------------------------------
+\section{ECDH Key Exchange Protocol (Note Sharing)}
+% ------------------------------------------------------------
+
+The note sharing protocol implements a cryptographic handshake between two parties mediated by the server but secured by client-side cryptography.
+
+\subsection{Share Initiation (Sender Side)}
+
+\begin{enumerate}
+    \item \textbf{Lookup recipient:} \texttt{GET /api/users/[recipientUsername]/public-key} returns the recipient's ECDH public key (JWK).
+    \item \textbf{Import recipient's key:} \texttt{crypto.subtle.importKey("jwk", recipientJwk, {name: "ECDH", namedCurve: "P-256"}, true, []) $\rightarrow$ recipientPublicKey}.
+    \item \textbf{Fetch own ECDH private key:} \texttt{GET /api/users/[senderUsername]/ecdh-private-key} returns \{encryptedPrivateKey, iv\}.
+    \item \textbf{Decrypt own ECDH private key:} \texttt{AES-GCM-Decrypt(derivedKey, encryptedPrivateKey, iv) $\rightarrow$ ecdhPrivateKeyBytes}. Import as CryptoKey.
+    \item \textbf{Compute shared secret:} \texttt{crypto.subtle.deriveKey({name: "ECDH", public: recipientPublicKey}, ecdhPrivateKey, {name: "HKDF", ...}, false, ["deriveKey"]) $\rightarrow$ sharedSecret}.
+    \item \textbf{Derive AES key from shared secret:} \texttt{HKDF(sharedSecret, salt=noteId, info="note-sharing") $\rightarrow$ sharedAesKey}.
+    \item \textbf{Unwrap note key:} \texttt{AES-GCM-Decrypt(derivedKey, wrappedKeyCipher, wrappedKeyIv) $\rightarrow$ noteKeyBytes}.
+    \item \textbf{Wrap note key for receiver:} \texttt{AES-GCM-Encrypt(sharedAesKey, noteKeyBytes) $\rightarrow$ \{reWrappedKey, reWrappedKeyIv\}}.
+    \item \textbf{Send to server:} \texttt{POST /api/notes/share} with \{noteId, receiverId, reWrappedKey, reWrappedKeyIv\}.
+\end{enumerate}
+
+\subsection{Receiving (Receiver Side)}
+
+\begin{enumerate}
+    \item \textbf{Fetch sender's ECDH public key:} From \texttt{GET /api/users/[senderUsername]/public-key}.
+    \item \textbf{Decrypt own ECDH private key:} Same as sender side step 3--4.
+    \item \textbf{Compute shared secret:} \texttt{ECDH(ownPrivateKey, senderPublicKey)} produces the same shared secret as on the sender side.
+    \item \textbf{Derive AES key:} \texttt{HKDF(sharedSecret, salt=noteId, info="note-sharing") $\rightarrow$ sharedAesKey}.
+    \item \textbf{Unwrap note key:} \texttt{AES-GCM-Decrypt(sharedAesKey, reWrappedKey, reWrappedKeyIv) $\rightarrow$ noteKeyBytes}.
+    \item \textbf{Decrypt content:} \texttt{AES-GCM-Decrypt(noteKey, contentCipher, contentIv) $\rightarrow$ plaintext}.
+\end{enumerate}
+
+The server cannot derive the shared secret because it does not have access to either user's unencrypted ECDH private key. The note key is never exposed to the server.
+
+% ------------------------------------------------------------
+\section{Security Guarantees}
+% ------------------------------------------------------------
+
+The cryptographic protocol provides the following guarantees:
+
+\begin{itemize}
+    \item \textbf{Confidentiality:} All user data is encrypted with AES-256-GCM. Plaintext never leaves the client machine.
+
+    \item \textbf{Integrity:} AES-GCM authentication tags detect any modification of ciphertext. An attacker who alters encrypted data in the database will cause decryption to fail rather than producing corrupted plaintext.
+
+    \item \textbf{Authentication:} The sentinel-based protocol verifies the user's knowledge of the derived key without exposing the password. The HMAC-signed cookie ensures session integrity.
+
+    \item \textbf{Forward Secrecy for Sharing:} Each shared note uses an independent HKDF-derived key. Compromising one shared note's key does not compromise other shares or the user's master derived key.
+
+    \item \textbf{Key Independence:} Each note has an independent encryption key. Compromising one note's key (e.g., through physical access to a collaborator's device) does not compromise other notes.
+
+    \item \textbf{Anti-Enumeration:} The sign-in endpoint provides indistinguishability between valid and invalid usernames, preventing user enumeration attacks.
+\end{itemize}
+
+The protocol also maintains security against common cryptographic pitfalls:
+
+\begin{itemize}
+    \item \textbf{No IV reuse:} Each encryption generates a fresh random IV using \texttt{crypto.getRandomValues()}.
+    \item \textbf{No key reuse across algorithms:} The PBKDF2-derived key is used only for AES-GCM. ECDH keys are used only for key agreement.
+    \item \textbf{Constant-time comparison:} Cookie signature verification uses timing-safe comparison.
+    \item \textbf{Authenticated encryption:} AES-GCM prevents chosen-ciphertext attacks.
+\end{itemize}

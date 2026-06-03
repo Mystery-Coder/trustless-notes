@@ -1,0 +1,45 @@
+% ============================================================
+% CHAPTER 8: CONCLUSION
+% ============================================================
+
+\chapter{Conclusion}
+
+Trustless Notes demonstrates how modern web cryptography and network security principles can be combined to build a zero-knowledge application that protects user privacy even against server-side compromise. By leveraging the Web Cryptography API---a standards-compliant, browser-native interface---the system performs all encryption and decryption exclusively on the client side, ensuring that the server stores only opaque ciphertext and cryptographic artifacts that are computationally infeasible to reverse without the user's password-derived key.
+
+The project successfully implements a comprehensive set of security features:
+
+\begin{itemize}
+    \item \textbf{PBKDF2 key derivation} with 200,000 iterations of SHA-256 produces non-extractable AES-256-GCM keys that cannot be exported, logged, or leaked through DevTools or network inspection.
+
+    \item \textbf{Sentinel-based authentication} ensures the password never leaves the browser. The server cannot verify passwords, enumerate usernames, or issue fraudulent session cookies without client-side proof of key knowledge.
+
+    \item \textbf{Per-note key wrapping} enables independent encryption of each note with a unique key, supporting future features such as password rotation without re-encrypting all content, and selective sharing without exposing other notes.
+
+    \item \textbf{ECDH P-256 key exchange} combined with HKDF key derivation provides cryptographically enforced note sharing. The server mediates the exchange but cannot derive the shared secret or access shared content.
+
+    \item \textbf{HMAC-SHA256 signed cookies} provide tamper-proof session management without requiring server-side session storage or exposing sensitive credentials in the cookie payload.
+
+    \item \textbf{Anti-enumeration sign-in} prevents username enumeration through indistinguishable response formatting, a critical defense for privacy-preserving systems.
+\end{itemize}
+
+The integrated security simulator provides an interactive educational tool that visually demonstrates why common attack scenarios---database breaches, password leaks, cookie forgery, and service key compromises---are insufficient to decrypt user data in a zero-knowledge architecture. This transparency enables users and developers to independently verify the system's security properties.
+
+The normalized relational database schema in Supabase PostgreSQL, combined with Supabase Storage for encrypted file blobs, provides a robust and scalable data layer that maintains referential integrity while storing only encrypted data.
+
+\section*{Future Work}
+
+The Trustless Notes architecture provides a foundation that can be extended in several directions:
+
+\begin{itemize}
+    \item \textbf{Real-Time Collaboration:} Implementing end-to-end encrypted collaborative editing using the ECDH key exchange mechanism to establish shared session keys.
+
+    \item \textbf{Key Rotation:} Implementing the ability to change passwords by re-wrapping all note keys with a new derived key, without re-encrypting any note content.
+
+    \item \textbf{Mobile Applications:} Building native mobile clients using the same cryptographic primitives, potentially via React Native or platform-native Web Crypto wrappers.
+
+    \item \textbf{Federated Identity:} Integrating with WebAuthn or FIDO2 for passwordless authentication while maintaining the zero-knowledge property.
+
+    \item \textbf{Recovery Mechanisms:} Exploring social key recovery or time-locked recovery mechanisms that maintain security while providing fallback options for legitimate users.
+\end{itemize}
+
+Overall, Trustless Notes serves as a reference implementation for trust-minimized application design, demonstrating that modern web APIs provide sufficient cryptographic primitives to build practical, privacy-respecting applications without requiring native code or browser plugins. The project successfully applies the principle that security should be mathematical rather than organizational---the system protects user data not through policies or promises, but through the cryptographic guarantee that the server is architecturally incapable of reading what it stores.

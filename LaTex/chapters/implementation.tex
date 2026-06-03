@@ -1,0 +1,270 @@
+% ============================================================
+% CHAPTER 3: IMPLEMENTATION DETAILS
+% ============================================================
+
+\chapter{Implementation Details}
+
+This chapter presents the implementation details of the Trustless Notes application, covering the project structure, key implementation patterns, and the design of critical system components. The implementation follows Next.js 15 App Router conventions with TypeScript throughout.
+
+% ------------------------------------------------------------
+\section{Project Structure}
+% ------------------------------------------------------------
+
+The codebase is organized according to Next.js App Router conventions with clear separation of concerns:
+
+\begin{verbatim}
+app/
+  api/                    # REST API route handlers
+    auth/
+      signup/route.ts     # Account creation
+      signin/route.ts     # Sentinel-based sign-in
+      session/route.ts    # Cookie issuance and revocation
+    notes/
+      route.ts            # List notes
+      create/route.ts     # Create note
+      update/route.ts     # Update note
+      [id]/route.ts       # Delete note
+      share/route.ts      # Share note via ECDH
+      shared/route.ts     # List shared notes
+      attachments/
+        [noteId]/route.ts  # List and delete attachments
+        upload/route.ts    # Upload encrypted attachment
+        download/[path]/   # Download encrypted blob
+    users/[username]/
+      public-key/route.ts  # Fetch ECDH public key
+      ecdh-private-key/    # Fetch encrypted ECDH private key
+  dashboard/               # Main application shell
+    page.tsx               # Dashboard with sidebar and editor
+    components/
+      ShareModal.tsx       # ECDH sharing interface
+      ImageDock.tsx        # Attachment management
+      SharedNoteEditor.tsx # Read-only shared note viewer
+  signin/page.tsx          # Sign-in page
+  signup/page.tsx          # Sign-up page
+  simulator/               # Security attack simulator
+    page.tsx               # Simulator with tab navigation
+    crypto-sim.ts          # Extractable-key crypto helpers
+    scenarios/             # Four attack scenario components
+lib/
+  crypto.ts                # Core cryptographic operations
+  auth.ts                  # Cookie signing and verification
+  supabase/
+    supabase.ts            # Supabase client initialization
+    schema.sql             # Database schema
+store/
+  session.ts               # In-memory session (Zustand)
+  notes.ts                 # Notes state management
+  sharedNotes.ts           # Shared notes state management
+proxy.ts                   # Next.js middleware (route guard)
+\end{verbatim}
+
+% ------------------------------------------------------------
+\section{Cryptographic Library (lib/crypto.ts)}
+% ------------------------------------------------------------
+
+The cryptographic library is the core of the application, implementing all client-side cryptographic operations using the Web Cryptography API. The library exposes the following key functions:
+
+\subsection{Key Derivation}
+
+\begin{verbatim}
+deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
+\end{verbatim}
+
+This function uses PBKDF2 with HMAC-SHA256 for 200,000 iterations to derive a 256-bit AES-GCM key. The key is created with \texttt{extractable: false}, meaning the raw key material can never be exported from the Web Cryptography API. The key exists only as an opaque \texttt{CryptoKey} handle in browser memory, preventing accidental exposure through serialization, logging, or debugging tools.
+
+\subsection{Encryption and Decryption}
+
+\begin{verbatim}
+encrypt(key: CryptoKey, plaintext: string): Promise<{ ciphertext: string, iv: string }>
+decrypt(key: CryptoKey, ciphertext: string, iv: string): Promise<string>
+\end{verbatim}
+
+These functions perform AES-256-GCM encryption and decryption. A random 12-byte IV is generated for each encryption operation using \texttt{crypto.getRandomValues()}. The ciphertext and IV are Base64-encoded for JSON serialization. AES-GCM provides authenticated encryption, detecting any tampering with the ciphertext.
+
+\subsection{Buffer Encryption (Attachments)}
+
+\begin{verbatim}
+encryptBuffer(key: CryptoKey, plaintext: ArrayBuffer): Promise<{ ciphertext: ArrayBuffer, iv: string }>
+decryptBuffer(key: CryptoKey, ciphertext: ArrayBuffer, iv: string): Promise<ArrayBuffer>
+\end{verbatim}
+
+These functions handle encryption of binary data (file attachments). The file is read as an ArrayBuffer, encrypted with the note key, and the resulting encrypted buffer is uploaded to Supabase Storage. Decryption reverses the process, producing an ArrayBuffer that can be displayed as a Blob URL.
+
+\subsection{Key Wrapping and Unwrapping}
+
+\begin{verbatim}
+wrapNoteKey(key: CryptoKey, wrappingKey: CryptoKey): Promise<{ wrappedKey: string, iv: string }>
+unwrapNoteKey(wrappedKey: string, iv: string, wrappingKey: CryptoKey): Promise<CryptoKey>
+\end{verbatim}
+
+Each note has its own AES-256-GCM key. The note key is wrapped (encrypted) by the user's derived key before storage, and unwrapped on retrieval. This indirection enables password rotation---re-wrapping all note keys with a new derived key---without re-encrypting any note content.
+
+\subsection{ECDH Key Exchange}
+
+\begin{verbatim}
+wrapNoteKeyForReceiver(
+  noteKey: CryptoKey, receiverPublicKey: CryptoKey,
+  senderPrivateKey: CryptoKey, noteId: string
+): Promise<{ ciphertext: string, iv: string }>
+
+unwrapNoteKeyFromSender(
+  wrappedKey: string, iv: string,
+  senderPublicKey: CryptoKey, receiverPrivateKey: CryptoKey, noteId: string
+): Promise<CryptoKey>
+\end{verbatim}
+
+These functions implement the ECDH P-256 key exchange protocol for note sharing. The shared secret is derived using ECDH and then passed through HKDF to produce a symmetric AES-256-GCM key. The note ID is used as the HKDF salt to ensure unique keys per shared note.
+
+\subsection{ECDH Key Generation and Encryption}
+
+\begin{verbatim}
+generateEcdhKeypair(): Promise<{ publicKey: JsonWebKey, privateKey: CryptoKey }>
+encryptEcdhPrivateKey(privateKey: CryptoKey, wrappingKey: CryptoKey): Promise<{ ... }>
+decryptEcdhPrivateKey(wrappedKey: string, iv: string, wrappingKey: CryptoKey): Promise<CryptoKey>
+\end{verbatim}
+
+On signup, an ECDH P-256 keypair is generated. The public key is exported as a JSON Web Key (JWK) for server storage. The private key is encrypted with the user's derived key before being sent to the server.
+
+% ------------------------------------------------------------
+\section{Authentication Flow (app/api/auth)}
+% ------------------------------------------------------------
+
+\subsection{Signup Endpoint}
+
+The signup route (\texttt{app/api/auth/signup/route.ts}) receives only cryptographic artifacts from the client:
+\begin{itemize}
+    \item The PBKDF2 salt
+    \item The encrypted sentinel values (ciphertext, IV, SHA-256 hash)
+    \item The ECDH public key (plaintext) and encrypted private key (ciphertext + IV)
+\end{itemize}
+
+The password is never transmitted. The server creates a user record and returns the user ID.
+
+\subsection{Signin Endpoint}
+
+The signin route (\texttt{app/api/auth/signin/route.ts}) implements anti-enumeration:
+\begin{itemize}
+    \item If the username exists: return the real salt, sentinel ciphertext, and sentinel IV.
+    \item If the username does not exist: return cryptographically random data of identical length.
+    \item Both responses are HTTP 200 with identical structure.
+\end{itemize}
+
+The client derives the key from the password and salt, then attempts AES-GCM decryption of the sentinel. If decryption fails (wrong password or non-existent user), a generic error is displayed. This prevents attackers from determining whether a username is registered.
+
+\subsection{Session Endpoint}
+
+The session route (\texttt{app/api/auth/session/route.ts}) handles cookie issuance. On successful sentinel verification:
+\begin{enumerate}
+    \item The server computes SHA-256 of the decrypted sentinel plaintext received from the client.
+    \item It compares this hash against the stored \texttt{sentinel\_hash}.
+    \item On match, it creates a cookie: \texttt{base64(username + "." + HMAC-SHA256(secret, username))}.
+\end{enumerate}
+
+The signature uses HMAC-SHA256 with a server-side secret stored in environment variables. The middleware (\texttt{proxy.ts}) verifies this signature on every protected route request.
+
+% ------------------------------------------------------------
+\section{Session Management (lib/auth.ts)}
+% ------------------------------------------------------------
+
+The authentication library implements cookie signing and verification:
+
+\begin{verbatim}
+signValue(value: string, secret: string): string
+verifyValue(value: string, secret: string): string | null
+\end{verbatim}
+
+\texttt{signValue} creates an HMAC-SHA256 signature of the value and returns a combined format: \texttt{value.signature}. \texttt{verifyValue} extracts the signature, recomputes the HMAC in constant time, and returns the original value only if the signature matches. Constant-time comparison prevents timing side-channel attacks.
+
+\subsection{Middleware (proxy.ts)}
+
+The Next.js middleware checks the signed \texttt{username} cookie on every request:
+\begin{itemize}
+    \item Requests to \texttt{/dashboard/*} without a valid cookie are redirected to \texttt{/signin}.
+    \item Requests to \texttt{/signin} or \texttt{/signup} with a valid cookie are redirected to \texttt{/dashboard}.
+    \item The middleware uses the Edge Runtime (Web Crypto API's SubtleCrypto) for signature verification, avoiding Node.js dependencies.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{State Management (store/)}
+% ------------------------------------------------------------
+
+Three Zustand stores manage client-side state, all intentionally non-persistent:
+
+\subsection{Session Store}
+
+The session store (\texttt{store/session.ts}) holds:
+\begin{itemize}
+    \item \texttt{username}: The authenticated user's identifier.
+    \item \texttt{derivedKey}: The PBKDF2-derived CryptoKey object. This is a native Web Crypto API handle that cannot be serialized, inspected, or logged.
+\end{itemize}
+
+The session is cleared when the browser tab is closed (no localStorage or sessionStorage persistence).
+
+\subsection{Notes Store}
+
+The notes store (\texttt{store/notes.ts}) manages the list of decrypted notes and the active note being edited:
+\begin{itemize}
+    \item \texttt{notes}: Array of \texttt{DecryptedNote} objects with plaintext title, content, and the note's CryptoKey.
+    \item \texttt{activeNoteId}: The currently selected note for editing.
+    \item Actions: \texttt{setNotes}, \texttt{addNote}, \texttt{updateNote}, \texttt{removeNote}, \texttt{setActiveNote}.
+\end{itemize}
+
+\subsection{Shared Notes Store}
+
+The shared notes store (\texttt{store/sharedNotes.ts}) manages notes shared with the current user:
+\begin{itemize}
+    \item \texttt{sharedNotes}: Array of \texttt{SharedDecryptedNote} objects.
+    \item \texttt{activeSharedNoteId}: Currently viewed shared note.
+    \item Actions: \texttt{setSharedNotes}, \texttt{setActiveSharedNote}.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Note Sharing Implementation}
+% ------------------------------------------------------------
+
+The share modal (\texttt{app/dashboard/components/ShareModal.tsx}) implements the ECDH-based sharing flow:
+
+\begin{enumerate}
+    \item User enters a recipient username in the modal.
+    \item The client fetches the recipient's ECDH public key via \texttt{GET /api/users/[username]/public-key}.
+    \item The client fetches its own encrypted ECDH private key via \texttt{GET /api/users/[username]/ecdh-private-key}.
+    \item The client decrypts its ECDH private key using the derived key.
+    \item The client computes the ECDH shared secret and derives a symmetric key via HKDF.
+    \item The client unwraps the note key from the note's \texttt{wrapped\_key\_cipher}.
+    \item The client re-wraps the note key with the ECDH-derived key.
+    \item The re-wrapped key is sent to \texttt{POST /api/notes/share}.
+\end{enumerate}
+
+The server records the share in the \texttt{shared\_notes} table with the re-wrapped key, sender ID, and receiver ID. The server never has access to the unwrapped note key or the ECDH-derived shared secret.
+
+% ------------------------------------------------------------
+\section{Attachment Pipeline}
+% ------------------------------------------------------------
+
+The image dock (\texttt{app/dashboard/components/ImageDock.tsx}) implements encrypted file attachment management:
+
+\begin{enumerate}
+    \item User selects an image file (validated against 5 MB limit and accepted MIME types).
+    \item File is read as \texttt{ArrayBuffer} using the FileReader API.
+    \item The buffer is encrypted with \texttt{encryptBuffer(noteKey, arrayBuffer)}.
+    \item The encrypted buffer is uploaded to Supabase Storage bucket \texttt{attachments} at path \texttt{\{userId\}/\{noteId\}/\{timestamp\}\_\{filename\}}.
+    \item Metadata (IV, filename, MIME type, storage path) is stored in the \texttt{attachments} table.
+    \item On display, the encrypted blob is downloaded, decrypted, and converted to a Blob URL for rendering.
+    \item Decrypted data exists only in memory and is revoked when the component unmounts.
+\end{enumerate}
+
+% ------------------------------------------------------------
+\section{Database Schema}
+% ------------------------------------------------------------
+
+The application uses four database tables, all storing only encrypted or cryptographic data:
+
+\begin{description}
+    \item[\texttt{users}:] Stores user credentials as cryptographic artifacts---PBKDF2 salt, encrypted sentinel values for authentication, and an ECDH keypair (public key in plaintext, private key encrypted with the derived key).
+
+    \item[\texttt{notes}:] Stores encrypted note content. Each note has separate ciphertext fields for title and content, along with a wrapped (encrypted) note key. The note key is encrypted with the user's derived key and is unique per note.
+
+    \item[\texttt{shared\_notes}:] Records note sharing relationships. Contains the note key re-wrapped with an ECDH-derived shared secret, ensuring that only the intended recipient can unwrap it.
+
+    \item[\texttt{attachments}:] Stores metadata for file attachments. The actual file content is stored as encrypted blobs in Supabase Storage, with the encryption IV recorded in this table for decryption.
+\end{description}

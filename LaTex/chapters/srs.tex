@@ -1,0 +1,216 @@
+% ============================================================
+% CHAPTER 2: SYSTEM REQUIREMENTS AND TECHNOLOGIES
+% ============================================================
+
+\chapter{System Requirements and Technologies}
+
+Trustless Notes is a zero-knowledge encrypted note-taking application that combines modern web frameworks with client-side cryptography to ensure user data privacy. The system's requirements and technology choices are driven by the core architectural constraint: the server must never have access to plaintext data.
+
+% ------------------------------------------------------------
+\section{Software Requirements}
+% ------------------------------------------------------------
+
+\begin{itemize}
+    \item \textbf{Frontend Framework:} Next.js 16 with React 19 and TypeScript provides the application shell, server-side rendering for landing pages, and API route handling. The App Router structure enables colocation of page components with their corresponding API logic.
+
+    \item \textbf{User Interface:} Radix UI Themes with Tailwind CSS v4 provides the component library and styling system. The dark theme with red accent and slate neutral colors creates a security-focused aesthetic.
+
+    \item \textbf{State Management:} Zustand manages client-side application state across three in-memory stores: session state (username and derived CryptoKey), notes list, and shared notes list. States are intentionally non-persistent to clear sensitive data on tab close.
+
+    \item \textbf{Cryptography:} The Web Cryptography API (window.crypto.subtle) provides all cryptographic primitives: PBKDF2 for key derivation, AES-256-GCM for symmetric encryption, ECDH P-256 for key exchange, HKDF for shared secret derivation, and HMAC-SHA256 for cookie signing.
+
+    \item \textbf{Database:} Supabase provides PostgreSQL-based relational storage for user accounts, encrypted note metadata, sharing records, and attachment metadata. Supabase Storage handles encrypted file blob storage.
+
+    \item \textbf{Markdown Rendering:} react-markdown renders note content with GitHub-flavored Markdown support for rich text display.
+
+    \item \textbf{Development Tools:} ESLint with eslint-config-next for code quality, TypeScript for type safety, and Git for version control.
+
+    \item \textbf{Additional Libraries:} uuid for generating unique identifiers, cookie for server-side cookie parsing.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Hardware Requirements}
+% ------------------------------------------------------------
+
+The minimum hardware requirements for implementing and running the system are as follows:
+
+\begin{itemize}
+    \item A standard computer or laptop with a 64-bit operating system (Windows, macOS, or Linux).
+    \item Minimum 8 GB RAM for running the development environment, Next.js development server, and testing.
+    \item At least 2 GB of available storage for project files, dependencies (node\_modules), and build artifacts.
+    \item Multi-core processor for efficient compilation and hot-reload during development.
+    \item Stable internet connectivity for accessing Supabase cloud database, downloading dependencies, and testing real-time features.
+    \item A modern web browser supporting the Web Cryptography API (Chrome, Firefox, Edge, or Safari).
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Functional Requirements}
+% ------------------------------------------------------------
+
+The system serves registered users who can create, manage, and share encrypted notes. The following functional requirements define the system's behavior.
+
+% ............................................................
+\subsection{User Authentication}
+% ............................................................
+
+\begin{itemize}
+    \item \textbf{Account Creation:}
+    \begin{itemize}
+        \item The system shall allow a user to create an account with a username and password.
+        \item The system shall generate a random 16-byte salt on the client for PBKDF2 key derivation.
+        \item The system shall derive a non-extractable AES-256-GCM key from the password using PBKDF2 with 200,000 iterations of SHA-256.
+        \item The system shall generate a random sentinel value, encrypt it with the derived key, compute its SHA-256 hash, and store only the ciphertext, IV, and hash on the server.
+        \item The system shall generate an ECDH P-256 keypair on the client, encrypt the private key with the derived key, and store the public key in plaintext and the private key as ciphertext on the server.
+        \item The system shall send only cryptographic artifacts to the server; the password shall never be transmitted.
+    \end{itemize}
+
+    \item \textbf{Sign In:}
+    \begin{itemize}
+        \item The system shall always return an HTTP 200 response with indistinguishable sentinel data (real or fake) regardless of whether the username exists, preventing username enumeration.
+        \item The system shall attempt sentinel decryption on the client using the locally derived key; if decryption fails, it shall display a generic "Invalid username or password" error.
+        \item On successful decryption, the client shall send the decrypted sentinel plaintext to the server, which shall hash and compare it against the stored sentinel\_hash.
+        \item The system shall issue an HMAC-SHA256 signed cookie containing the username upon successful sentinel verification.
+    \end{itemize}
+
+    \item \textbf{Session Management:}
+    \begin{itemize}
+        \item The system shall maintain session state via a signed `username` cookie.
+        \item The system shall verify the cookie signature on every authenticated API request.
+        \item The system shall allow session termination by clearing the cookie.
+    \end{itemize}
+\end{itemize}
+
+% ............................................................
+\subsection{Note Management}
+% ............................................................
+
+\begin{itemize}
+    \item \textbf{Create Note:}
+    \begin{itemize}
+        \item The system shall generate a unique AES-256-GCM key for each new note.
+        \item The system shall encrypt the note title and content separately using the note key.
+        \item The system shall wrap (encrypt) the note key using the user's derived key.
+        \item The system shall store the ciphertexts, IVs, and wrapped key on the server.
+    \end{itemize}
+
+    \item \textbf{Read Notes:}
+    \begin{itemize}
+        \item The system shall retrieve all encrypted notes belonging to the authenticated user.
+        \item The client shall unwrap each note's key using the derived key and decrypt the title and content.
+        \item The system shall display decrypted notes in a sidebar with search and selection.
+    \end{itemize}
+
+    \item \textbf{Update Note:}
+    \begin{itemize}
+        \item The system shall support updating the title and/or content of an existing note.
+        \item The client shall re-encrypt only the changed fields with the existing note key.
+        \item The system shall implement debounced auto-save with an 800ms delay.
+        \item The server shall verify note ownership before allowing updates.
+    \end{itemize}
+
+    \item \textbf{Delete Note:}
+    \begin{itemize}
+        \item The system shall allow the note owner to delete a note and its associated attachments.
+        \item The server shall verify note ownership before allowing deletion.
+    \end{itemize}
+\end{itemize}
+
+% ............................................................
+\subsection{Note Sharing}
+% ............................................................
+
+\begin{itemize}
+    \item \textbf{Share Note:}
+    \begin{itemize}
+        \item The system shall allow the note owner to share a note with another registered user.
+        \item The system shall fetch the recipient's ECDH public key (stored in plaintext on the server).
+        \item The client shall decrypt its own ECDH private key using the derived key.
+        \item The client shall compute the ECDH shared secret and derive an AES key via HKDF.
+        \item The client shall wrap the note key with this derived AES key and store the ciphertext on the server.
+        \item The server shall record the sharing relationship (sender, receiver, note, wrapped key).
+    \end{itemize}
+
+    \item \textbf{Receive Shared Note:}
+    \begin{itemize}
+        \item The system shall list all notes shared with the authenticated user.
+        \item The client shall decrypt its own ECDH private key, compute the shared secret with the sender's public key, derive the AES key via HKDF, and unwrap the note key.
+        \item Shared notes shall be displayed in a read-only editor.
+    \end{itemize}
+\end{itemize}
+
+% ............................................................
+\subsection{Attachment Management}
+% ............................................................
+
+\begin{itemize}
+    \item \textbf{Upload Attachment:}
+    \begin{itemize}
+        \item The system shall allow users to attach image files to notes (maximum 5 MB per file).
+        \item The client shall read the file as an ArrayBuffer, encrypt it with the note key using AES-256-GCM, and upload the encrypted blob to Supabase Storage.
+        \item The system shall record metadata (IV, original filename, MIME type, storage path) in the attachments table.
+    \end{itemize}
+
+    \item \textbf{View and Download Attachments:}
+    \begin{itemize}
+        \item The system shall display thumbnail previews of attached images.
+        \item On download, the client shall fetch the encrypted blob, decrypt it with the note key, and create an in-memory Blob URL for display.
+        \item Decrypted data shall remain in memory only and be discarded when the component unmounts.
+    \end{itemize}
+
+    \item \textbf{Delete Attachment:}
+    \begin{itemize}
+        \item The system shall allow the note owner to delete individual attachments.
+        \item The system shall remove both the database record and the Storage blob.
+    \end{itemize}
+\end{itemize}
+
+% ............................................................
+\subsection{Security Simulator}
+% ............................................................
+
+\begin{itemize}
+    \item The system shall provide an interactive `/simulator` route with four attack scenarios.
+    \item Each scenario shall visually demonstrate a specific breach and explain why it fails to compromise user data.
+    \item Scenarios shall include: Database Leak, Password Leak, Cookie Forgery, and Supabase Service Key Leak.
+    \item The simulator shall reimplement cryptographic operations with extractable keys for display purposes only.
+    \item The simulator shall include a typewriter terminal component for narrative delivery.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Non-Functional Requirements}
+% ------------------------------------------------------------
+
+\begin{itemize}
+    \item \textbf{Performance:}
+    \begin{itemize}
+        \item PBKDF2 key derivation (200,000 iterations) shall complete within 2 seconds on modern hardware.
+        \item AES-256-GCM encryption and decryption of note content shall complete in under 100 milliseconds.
+        \item Note list loading with decryption shall complete within 3 seconds for up to 100 notes.
+        \item The debounced auto-save shall trigger no more than once per 800ms of inactivity.
+    \end{itemize}
+
+    \item \textbf{Security:}
+    \begin{itemize}
+        \item The user's derived key shall be non-extractable (cannot be exported from the Web Cryptography API).
+        \item The user's password shall never be transmitted to the server.
+        \item All API communication shall use HTTPS encryption.
+        \item Session cookies shall be signed with HMAC-SHA256 to prevent forgery.
+        \item The sign-in endpoint shall provide indistinguishability between valid and invalid usernames.
+        \item Note ownership and sharing relationships shall be verified server-side on every operation.
+        \item ECDH private keys shall be stored encrypted and never exposed in plaintext on the server.
+    \end{itemize}
+
+    \item \textbf{Reliability:}
+    \begin{itemize}
+        \item The system shall maintain data integrity through transaction management and foreign key constraints.
+        \item Encrypted data shall be stored with authentication tags (AES-GCM provides authenticated encryption).
+        \item The system shall gracefully handle network failures during saves with local state preservation.
+    \end{itemize}
+
+    \item \textbf{Usability:}
+    \begin{itemize}
+        \item The interface shall provide clear visual feedback during cryptographic operations (loading states).
+        \item Error messages shall not reveal whether a username exists on the system.
+        \item The markdown editor shall support standard formatting syntax.
+    \end{itemize}
+\end{itemize}

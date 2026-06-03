@@ -1,0 +1,78 @@
+% ============================================================
+% CHAPTER 1: INTRODUCTION
+% ============================================================
+
+\chapter{Introduction}
+
+Cloud-based applications have become an integral part of modern life, with users entrusting their personal data to services ranging from email and document editing to note-taking and file storage. These services typically operate on a trust-based model where the service provider has full access to user data, relying on organizational policies and legal agreements rather than technical guarantees to protect privacy. A compromised server, malicious insider, or government subpoena can expose all user data stored on such platforms.
+
+Trustless Notes addresses this fundamental security challenge by implementing a \textbf{zero-knowledge architecture} where the server that stores user data is architecturally incapable of reading it. All cryptographic operations---key derivation, encryption, decryption, and key exchange---are performed exclusively on the client side using the Web Cryptography API, a standards-compliant interface available in all modern browsers. The server stores only ciphertext, initialization vectors (IVs), salts, and wrapped cryptographic keys, none of which can be used to recover the original plaintext without the user's password-derived key, which never leaves the browser.
+
+The system provides a full-featured note-taking experience including text note creation and editing, secure file attachment handling, and cryptographically enforced note sharing between users. An educational security simulator is integrated into the application to visually demonstrate the system's resilience against common attack scenarios including database breaches, password leaks, cookie forgery, and service-level key compromises.
+
+% ------------------------------------------------------------
+\section{Objectives}
+% ------------------------------------------------------------
+
+The main objectives of this project are:
+
+\begin{itemize}
+    \item To design and implement a zero-knowledge architecture where the server never has access to plaintext user data, using client-side encryption exclusively.
+    \item To implement secure user authentication without transmitting passwords, using PBKDF2 key derivation and sentinel-based verification.
+    \item To implement cryptographically enforced note sharing using ECDH P-256 key exchange and HKDF-derived symmetric keys, ensuring the server cannot grant itself access to shared content.
+    \item To demonstrate the security properties of the system through an interactive attack simulator that visualizes why common breach scenarios fail to compromise user data.
+    \item To design and deploy a normalized relational database schema in Supabase (PostgreSQL) for storing encrypted artifacts while maintaining referential integrity and query performance.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Scope}
+% ------------------------------------------------------------
+
+The scope of this project encompasses the complete development cycle of a zero-knowledge note-taking system with the following components:
+
+\begin{enumerate}
+    \item \textbf{Cryptographic Protocol Design:}
+    \begin{itemize}
+        \item Password-based key derivation using PBKDF2 with SHA-256 (200,000 iterations) producing non-extractable AES-256-GCM keys.
+        \item Per-note unique AES-256-GCM key generation with independent key wrapping for password rotation support.
+        \item ECDH P-256 key pair generation at signup and secure key exchange for note sharing.
+        \item HKDF-based symmetric key derivation from ECDH shared secrets.
+    \end{itemize}
+
+    \item \textbf{Backend Development:}
+    \begin{itemize}
+        \item Next.js API routes for user authentication, note CRUD operations, sharing, and attachment management.
+        \item HMAC-SHA256 signed cookie-based session management.
+        \item Anti-enumeration sign-in protocol using indistinguishable real/fake sentinel responses.
+    \end{itemize}
+
+    \item \textbf{Frontend Development:}
+    \begin{itemize}
+        \item React-based dashboard for note creation, editing, and management with debounced auto-save.
+        \item Share modal interface for ECDH-based note sharing.
+        \item Image attachment dock with client-side encryption and thumbnail preview.
+        \item Security simulator with four interactive attack scenarios.
+    \end{itemize}
+
+    \item \textbf{Database Integration:}
+    \begin{itemize}
+        \item Supabase PostgreSQL for relational storage of users, notes, shared notes, and attachments metadata.
+        \item Supabase Storage for encrypted file attachment blobs.
+    \end{itemize}
+
+    \item \textbf{Security Simulator:}
+    \begin{itemize}
+        \item Interactive visualization of database leak, password leak, cookie forgery, and service key compromise scenarios.
+        \item Client-side cryptographic simulation demonstrating why each attack vector fails.
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Limitations and Exclusions:}
+
+The project does not aim to provide:
+\begin{itemize}
+    \item A mobile application (limited to browser-based web access).
+    \item End-to-end encrypted real-time collaboration on the same note.
+    \item Password recovery mechanisms (by design: lost password means lost data).
+    \item Federation with external identity providers (OAuth, SAML, etc.).
+\end{itemize}

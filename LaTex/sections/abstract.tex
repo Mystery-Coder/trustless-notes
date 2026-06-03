@@ -1,0 +1,17 @@
+% ============================================================
+% ABSTRACT
+% ============================================================
+
+\newpage
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Trustless Notes is a zero-knowledge, end-to-end encrypted note-taking application that ensures the server storing user data is architecturally incapable of reading it. The system leverages modern cryptographic primitives available through the Web Crypto API to perform all encryption and decryption exclusively on the client side, with the server storing only ciphertext, initialization vectors, salts, and wrapped cryptographic keys.
+
+The application is built using Next.js with React for the frontend and API routes serving as the backend, with Supabase providing PostgreSQL-based relational storage and object storage for encrypted file attachments. User authentication follows a challenge-response protocol using PBKDF2-derived keys: the password never leaves the browser, and sign-in verification is performed locally through sentinel decryption rather than server-side password comparison. A signed HMAC-SHA256 cookie maintains session state without exposing sensitive credentials.
+
+Note sharing is implemented through ECDH P-256 key exchange combined with HKDF-derived symmetric keys, allowing users to selectively share individual notes without revealing their master password or other note contents. Each note is encrypted with a unique AES-256-GCM key that is independently wrapped by the user's derived key, enabling future features such as password rotation without re-encrypting all notes.
+
+An integrated educational security simulator demonstrates the system's security properties through four interactive attack scenarios, visually illustrating why data breaches, password leaks, cookie forgery, and service key compromises are insufficient to decrypt user data in a zero-knowledge architecture.
+
+Overall, Trustless Notes demonstrates the practical application of modern web cryptography and network security principles to build a system that protects user privacy even against server-side compromise, serving as a reference implementation for trust-minimized application design.
