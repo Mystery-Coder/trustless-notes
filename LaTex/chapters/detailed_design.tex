@@ -4,7 +4,7 @@
 
 \chapter{Architecture and Detailed Design}
 
-The Detailed Design chapter of Trustless Notes focuses on the system architecture, data flow, and the cryptographic protocol that enables zero-knowledge operation. While the ER diagram defines the static structure of the database, the architectural diagrams provide a dynamic view of how data flows through encryption layers, how authentication works without password transmission, and how cryptographic key exchange enables secure note sharing.
+The Detailed Design chapter of Trustless Notes focuses on the system architecture, network communication patterns, and the cryptographic protocol that enables zero-knowledge operation. The architecture provides a dynamic view of how data flows through encryption layers, how authentication works without password transmission, and how cryptographic key exchange enables secure note sharing.
 
 % ------------------------------------------------------------
 \section{System Architecture Overview}
@@ -36,56 +36,76 @@ Trustless Notes follows a client-server architecture with a clear security bound
 \end{itemize}
 
 % ------------------------------------------------------------
-\section{Data Flow Diagrams}
+\section{Network Architecture}
 % ------------------------------------------------------------
 
-% ............................................................
-\subsection{DFD Level 0 -- Context Diagram}
-% ............................................................
-
-The Level 0 Data Flow Diagram presents a high-level overview of the Trustless Notes system. The entire system is represented as a single process, with emphasis on defining system boundaries and illustrating how the system interacts with external entities.
+Trustless Notes follows a three-tier client-server architecture with encrypted communication between each layer.
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.75\textwidth]{media/dfd0.jpeg}
-    \caption{DFD Level 0 -- Context Diagram}
-    \label{fig:dfd_level0}
+    \begin{tikzpicture}[
+        box/.style={draw, rounded corners=5pt, minimum width=11cm, minimum height=1.2cm, font=\small, text width=10cm, align=center},
+        arrow/.style={-{Latex[length=2.5mm]}, thick},
+    ]
+
+        % ---- Client Layer ----
+        \node[box, fill=blue!8, draw=blue!50!black] (client) {
+            \textbf{Client Layer (Browser)}\\[2pt]
+            \footnotesize React + Web Crypto API \quad| \quad PBKDF2 / AES-256-GCM / ECDH P-256
+        };
+
+        % ---- Server Layer ----
+        \node[box, fill=orange!8, draw=orange!60!black, below=0.7cm of client] (server) {
+            \textbf{Server Layer (Next.js API Routes)}\\[2pt]
+            \footnotesize HMAC-SHA256 Session Auth \quad| \quad Supabase \texttt{service\_role} SDK
+        };
+
+        % ---- Database Layer ----
+        \node[box, fill=green!8, draw=green!50!black, below=0.7cm of server] (db) {
+            \textbf{Data Layer (Supabase)}\\[2pt]
+            \footnotesize PostgreSQL (ciphertext / IVs / salts) \quad| \quad Storage (encrypted blobs)
+        };
+
+        % ---- Arrows ----
+        \draw[arrow] (client.south) -- node[left, font=\footnotesize] {HTTPS POST} (server.north);
+        \draw[arrow] (server.north) -- node[right, font=\footnotesize] {JSON response} (client.south);
+        \draw[arrow] (server.south) -- node[left, font=\footnotesize] {SQL \& Storage API} (db.north);
+        \draw[arrow] (db.north) -- node[right, font=\footnotesize] {query results} (server.south);
+
+        % Security note
+        \node[below=0.25cm of db.south, font=\footnotesize\itshape, text=red!70!black] {
+            Server stores only ciphertext --- all keys live exclusively in browser memory
+        };
+
+    \end{tikzpicture}
+    \caption{Three-Tier Network Architecture}
+    \label{fig:network_arch}
 \end{figure}
 
-\textbf{External Entities:}
-
+\textbf{Tier 1 -- Client Layer (Browser):}
 \begin{itemize}
-    \item \textbf{User:} Represents the primary end users who interact with the system through the web browser. Users create accounts, sign in, manage notes, share notes, and upload attachments. All cryptographic operations---key derivation, encryption, decryption, and key exchange---occur in the user's browser.
-
-    \item \textbf{Administrator:} Represents the Supabase project administrator who manages the cloud infrastructure. The administrator has access to the database and storage layer but cannot decrypt user data due to the zero-knowledge architecture.
+    \item Next.js React application served as static assets via Vercel or similar CDN.
+    \item All cryptographic operations execute in the browser's Web Cryptography API sandbox.
+    \item Cryptographic keys exist exclusively as non-extractable CryptoKey objects in JavaScript heap memory.
+    \item Communication with the server layer occurs exclusively over HTTPS.
 \end{itemize}
 
-\textbf{Central Process:}
-
+\textbf{Tier 2 -- Server Layer (Next.js API Routes):}
 \begin{itemize}
-    \item \textbf{Process 0: Trustless Notes System:} Encapsulates all system functionality including user authentication (without password transmission), note CRUD operations with client-side encryption, cryptographic note sharing via ECDH key exchange, and encrypted file attachment management.
+    \item RESTful API endpoints deployed as serverless functions.
+    \item HMAC-SHA256 signed cookie verification for session authentication.
+    \item The server has no access to plaintext data---it operates exclusively on ciphertext.
+    \item Database operations are performed using the Supabase service-role key.
 \end{itemize}
 
-% ............................................................
-\subsection{DFD Level 1 -- Process Decomposition}
-% ............................................................
+\textbf{Tier 3 -- Data Layer (Supabase):}
+\begin{itemize}
+    \item PostgreSQL database stores encrypted artifacts (ciphertext, IVs, salts, wrapped keys).
+    \item Supabase Storage stores encrypted file attachment blobs.
+    \item The data layer provides no decryption capability---it is a passive storage backend.
+\end{itemize}
 
-The Level 1 DFD provides a detailed breakdown of the overall system into interconnected subprocesses.
 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.5\textwidth]{media/dfd1.jpeg}
-    \caption{DFD Level 1 -- Process Decomposition}
-    \label{fig:dfd_level1}
-\end{figure}
-
-\textbf{Process 1.0: User Authentication:} Handles account creation and sign-in. On signup, the client derives a key from the password using PBKDF2, generates a random sentinel value, encrypts it with the derived key, generates an ECDH keypair, encrypts the private key, and sends only cryptographic artifacts to the server. On sign-in, the server returns sentinel data (real or fake), the client attempts decryption locally, and only on success sends the sentinel plaintext for server verification.
-
-\textbf{Process 2.0: Note Management:} Handles creation, reading, updating, and deletion of notes. Each note has a unique AES-256-GCM key. The title and content are encrypted separately with this note key, and the note key itself is wrapped (encrypted) with the user's derived key. The server stores only ciphertext and wrapped keys.
-
-\textbf{Process 3.0: Note Sharing:} Handles cryptographic note sharing between users. The sender fetches the recipient's ECDH public key, decrypts their own ECDH private key, computes the shared secret, derives an AES key via HKDF, and wraps the note key with this derived key. The server stores the re-wrapped key and the sender-receiver relationship.
-
-\textbf{Process 4.0: Attachment Management:} Handles encrypted file upload, download, and deletion. Files are read as ArrayBuffer, encrypted with the note key using AES-256-GCM, and uploaded to Supabase Storage as opaque blobs. Metadata including the IV is stored in the attachments table.
 
 % ------------------------------------------------------------
 \section{Cryptographic Protocol Design}

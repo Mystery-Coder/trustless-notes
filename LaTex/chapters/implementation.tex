@@ -238,6 +238,22 @@ The share modal (\texttt{app/dashboard/components/ShareModal.tsx}) implements th
 The server records the share in the \texttt{shared\_notes} table with the re-wrapped key, sender ID, and receiver ID. The server never has access to the unwrapped note key or the ECDH-derived shared secret.
 
 % ------------------------------------------------------------
+\section{Data Store Descriptions}
+% ------------------------------------------------------------
+
+The application stores data across four tables and an object storage bucket, all holding only encrypted or cryptographic material:
+
+\begin{description}
+    \item[\texttt{users}:] Stores user authentication artifacts---PBKDF2 salt, encrypted sentinel values (ciphertext, IV, SHA-256 hash), ECDH public key in plaintext, and ECDH private key encrypted with the user's derived key.
+
+    \item[\texttt{notes}:] Stores encrypted note content with separate ciphertext fields for title and content, each with their own IV. The per-note AES-256-GCM key is stored encrypted (wrapped) with the user's derived key.
+
+    \item[\texttt{shared\_notes}:] Records note sharing relationships. Contains the note key re-wrapped with an ECDH-derived shared secret, along with sender and receiver identifiers.
+
+    \item[\texttt{attachments}:] Stores metadata for encrypted file attachments. The actual file content resides as encrypted blobs in Supabase Storage, with the encryption IV recorded here for decryption.
+\end{description}
+
+% ------------------------------------------------------------
 \section{Attachment Pipeline}
 % ------------------------------------------------------------
 
@@ -253,18 +269,4 @@ The image dock (\texttt{app/dashboard/components/ImageDock.tsx}) implements encr
     \item Decrypted data exists only in memory and is revoked when the component unmounts.
 \end{enumerate}
 
-% ------------------------------------------------------------
-\section{Database Schema}
-% ------------------------------------------------------------
 
-The application uses four database tables, all storing only encrypted or cryptographic data:
-
-\begin{description}
-    \item[\texttt{users}:] Stores user credentials as cryptographic artifacts---PBKDF2 salt, encrypted sentinel values for authentication, and an ECDH keypair (public key in plaintext, private key encrypted with the derived key).
-
-    \item[\texttt{notes}:] Stores encrypted note content. Each note has separate ciphertext fields for title and content, along with a wrapped (encrypted) note key. The note key is encrypted with the user's derived key and is unique per note.
-
-    \item[\texttt{shared\_notes}:] Records note sharing relationships. Contains the note key re-wrapped with an ECDH-derived shared secret, ensuring that only the intended recipient can unwrap it.
-
-    \item[\texttt{attachments}:] Stores metadata for file attachments. The actual file content is stored as encrypted blobs in Supabase Storage, with the encryption IV recorded in this table for decryption.
-\end{description}
