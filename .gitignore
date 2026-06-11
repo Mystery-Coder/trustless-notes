@@ -38,21 +38,21 @@ yarn-error.log*
 .vercel
 
 # latex build artifacts
-LaTex/*.aux
-LaTex/*.log
-LaTex/*.out
-LaTex/*.toc
-LaTex/*.lof
-LaTex/*.lot
-LaTex/*.bbl
-LaTex/*.blg
-LaTex/*.brf
-LaTex/*.fdb_latexmk
-LaTex/*.fls
-LaTex/*.synctex.gz
-LaTex/*.xdv
-LaTex/*.dvi
-LaTex/*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+*.brf
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.xdv
+*.dvi
+*.pdf
 
 # typescript
 *.tsbuildinfo
