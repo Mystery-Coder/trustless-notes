@@ -16,17 +16,18 @@
 \author{
 \begin{tabular}{cc}
 \begin{tabular}{c}
+\textbf{Prof. Savitri Kulkarni}\\
+Assistant Professor\\
+Dept. of Computer Science and Engineering\\
+RV College of Engineering\\
+savitrikulkarni@rvce.edu.in
+\end{tabular}
+&
+\begin{tabular}{c}
 \textbf{Srinidhi H}\\
 Dept. of Computer Science and Engineering\\
 RV College of Engineering\\
 srinidhih.cs23@rvce.edu.in
-\end{tabular}
-&
-\begin{tabular}{c}
-\textbf{Srikar Rao H M}\\
-Dept. of Computer Science and Engineering\\
-RV College of Engineering\\
-srikarraoh.cs23@rvce.edu.in
 \end{tabular}
 \\[1cm]
 \begin{tabular}{c}
@@ -37,11 +38,10 @@ surajsreedhara.cs23@rvce.edu.in
 \end{tabular}
 &
 \begin{tabular}{c}
-\textbf{Prof. Savitri Kulkarni}\\
-Assistant Professor\\
+\textbf{Srikar Rao H M}\\
 Dept. of Computer Science and Engineering\\
 RV College of Engineering\\
-savitrikulkarni@rvce.edu.in
+srikarraoh.cs23@rvce.edu.in
 \end{tabular}
 \end{tabular}
 }
@@ -49,7 +49,7 @@ savitrikulkarni@rvce.edu.in
 \maketitle
 
 \begin{abstract}
-Trustless Notes is a zero-knowledge, end-to-end encrypted note-taking application that ensures the server storing user data is architecturally incapable of reading it. The system leverages the Web Cryptography API to perform all encryption and decryption exclusively on the client side, with the server storing only ciphertext, initialization vectors, salts, and wrapped cryptographic keys. Authentication follows a challenge-response protocol using PBKDF2-derived keys where the password never leaves the browser. Note sharing is implemented through ECDH P-256 key exchange combined with HKDF-derived symmetric keys, allowing selective sharing without revealing the master password or other note contents. An integrated security simulator demonstrates resilience against database breaches, password leaks, cookie forgery, and service key compromises. The application is built using Next.js with Supabase providing PostgreSQL-based relational storage and object storage for encrypted file attachments.
+Trustless Notes is a zero-knowledge, end-to-end encrypted note-taking application. This platform ensures the server storing user data is architecturally incapable of reading it. All encryption and decryption occur on the client-side utilizing the Web Cryptography API~\cite{ref1,ref13}; the server only stores encrypted versions of the user's note data, along with IVs, salts, and wrapped cryptographic keys. Users are authenticated via a challenge-response authentication process using derived PBKDF2 passwords~\cite{ref3} that do not leave the browser. Note sharing is implemented through ECDH P-256 key exchange~\cite{ref7,ref9} combined with HKDF-derived symmetric keys~\cite{ref4,ref8}, allowing selective sharing.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -58,9 +58,9 @@ Zero-Knowledge Architecture, End-to-End Encryption, Web Cryptography, Client-Sid
 
 \section{Introduction}
 
-Cloud-based applications have become integral to modern life, with users entrusting personal data to services ranging from email and document editing to note-taking and file storage. These services typically operate on a trust-based model where the service provider has full access to user data, relying on organizational policies and legal agreements rather than technical guarantees to protect privacy. A compromised server, malicious insider, or government subpoena can expose all user data stored on such platforms.
+Cloud-based applications are being highly relied on in today's modern life, with users entrusting personal data to services ranging from email and document editing to note-taking and file storage. Most of these services work on a trust-based approach. The service providers are highly trusted but at the same time they can access all the stored data. Privacy is usually protected through company policies and legal commitments rather than through strong technical safeguards. A compromised server, malicious insider, or government subpoena have a high risk of exposing all user data stored on such platforms.
 
-Trustless Notes addresses this fundamental security challenge by implementing a \textbf{zero-knowledge architecture}---the server is architecturally incapable of reading user data. All cryptographic operations---key derivation, encryption, decryption, and key exchange---are performed exclusively on the client side using the Web Cryptography API, a standards-compliant interface available in all modern browsers. The server stores only ciphertext, initialization vectors (IVs), salts, and wrapped cryptographic keys, none of which can recover plaintext without the user's password-derived key that never leaves the browser.
+Trustless Notes addresses this fundamental security challenge by implementing a \textbf{zero-knowledge architecture}~\cite{ref14,ref20}---the server is architecturally incapable of reading user data. All cryptographic operations---key derivation, encryption, decryption, and key exchange---are performed exclusively on the client side using the Web Cryptography API~\cite{ref1}, a standards-compliant interface available in all modern browsers. The server stores only ciphertext, initialization vectors (IVs), salts, and wrapped cryptographic keys, none of which can recover plaintext without the user's password-derived key that never leaves the browser.
 
 \section{Features and Significance}
 
@@ -72,19 +72,19 @@ Conventional web applications authenticate users by transmitting a password (or 
 
 \subsection{Client-Side Encryption with Non-Extractable Keys}
 
-All encryption and decryption occurs in the browser using keys that are created with the non-extractable flag. This means the raw key material can never be exported from the Web Cryptography API, even by JavaScript running in the same page. An attacker who achieves cross-site scripting (XSS) execution cannot exfiltrate the key because it exists only as an opaque handle in browser memory. This is a significant improvement over JavaScript cryptography libraries where keys are represented as byte arrays that can be accessed, logged, or transmitted by any script on the page.
+All encryption and decryption occurs in the browser using keys that are created with the non-extractable flag~\cite{ref1}. This means the raw key material can never be exported from the Web Cryptography API, even by JavaScript running in the same page. An attacker who achieves cross-site scripting (XSS) execution cannot exfiltrate the key because it exists only as an opaque handle in browser memory. This is a significant improvement over JavaScript cryptography libraries where keys are represented as byte arrays that can be accessed, logged, or transmitted by any script on the page.
 
 \subsection{Per-Note Key Independence}
 
-Every note is encrypted with its own unique AES-256-GCM key, which is then wrapped (encrypted) by the user's master derived key before storage. This indirection provides two critical benefits. First, it enables password rotation---a user can change their password by re-wrapping all note keys with a new derived key, without re-encrypting any note content. Second, it enables selective sharing---a specific note key can be wrapped for a recipient without exposing any other notes. In a conventional system where all data is encrypted with a single key, sharing one item would require sharing the master key, compromising all other data.
+Every note created by a user is encrypted with its own unique AES-256-GCM key~\cite{ref2,ref16}, which is further wrapped (encrypted) by the user's master derived key before storage. Using this two layer encryption has two major advantages. Most importantly, it enables password rotation---a user can change their password by re-wrapping all note keys with a new derived key, without re-encrypting any note content. Also, it allows selective sharing---a specific note key can be wrapped for a recipient without exposing any other notes. In a conventional system where all data is encrypted with a single key, sharing one item would require sharing the master key, which may lead to data breach.
 
 \subsection{Cryptographic Note Sharing}
 
-Note sharing in conventional end-to-end encrypted systems often requires the server to manage key distribution, creating a potential point of compromise. Trustless Notes implements sharing through Elliptic Curve Diffie-Hellman (ECDH) key exchange over the P-256 curve. Each user generates an ECDH keypair at signup; the public key is stored openly on the server, while the private key is encrypted with the user's derived key. To share a note, the sender computes an ECDH shared secret using their private key and the recipient's public key, then derives a symmetric AES-256-GCM key via HKDF to wrap the note key. The server mediates the exchange---it stores the re-wrapped key---but cannot derive the shared secret because it has access to neither user's unencrypted private key. This ensures that the server cannot grant itself access to shared content.
+In many traditional note-sharing systems, end-to-end encrypted systems often require the server to manage key distribution, which creates a potential point of data breach. Trustless Notes implements sharing through Elliptic Curve Diffie-Hellman (ECDH) key exchange over the P-256 curve~\cite{ref7,ref19}. Each user generates an ECDH keypair during signup; the public key is stored openly on the server (without any encryption), while the private key is encrypted with the user's derived key. To share a note, the sender computes an ECDH shared secret using their private key and public key of the recipient, then derives a symmetric AES-256-GCM key via HKDF~\cite{ref4} to wrap the note key. The server just mediates the exchange---it stores the re-wrapped key---but can never derive the shared secret because it does not have access to the user's unencrypted private key. This ensures zero knowledge of the data being shared to the server.
 
 \subsection{Anti-Enumeration and Session Security}
 
-The sign-in endpoint implements anti-enumeration by returning indistinguishable responses for both valid and invalid usernames. The response size, structure, and timing are identical, preventing attackers from determining which usernames are registered on the system. Session state is maintained through HMAC-SHA256 signed cookies that provide tamper-proof authentication without exposing sensitive credentials. The signature is verified in constant time on every request, preventing timing side-channel attacks.
+The sign-in system includes protection against username enumeration attacks by responding in the same way whether a username exists or not. The response size, structure, and timing are identical, preventing attackers from determining which usernames are registered on the system. Session state is maintained through HMAC-SHA256 signed cookies~\cite{ref10,ref11} that provide tamper-proof authentication without exposing sensitive credentials. The signature is verified in constant time on every request, preventing timing side-channel attacks~\cite{ref15}.
 
 \section{System Architecture}
 
@@ -143,7 +143,7 @@ Trustless Notes follows a three-tier client-server architecture with a clear sec
 
 \subsection{PBKDF2 Key Derivation}
 
-When the user creates an account, the browser generates a cryptographically random 16-byte salt using a cryptographically secure random number generator. The password is combined with this salt using PBKDF2 with HMAC-SHA256 for 200,000 iterations to produce a 256-bit AES-GCM key. The key is created with the non-extractable flag, meaning it can never be exported from the Web Cryptography API as raw bytes.
+When the user creates an account, the browser generates a cryptographically random 16-byte salt using a cryptographically secure random number generator. The password is combined with this salt using PBKDF2 with HMAC-SHA256 for 200,000 iterations to produce a 256-bit AES-GCM key~\cite{ref3,ref12,ref17}. The key is created with the non-extractable flag~\cite{ref1}, meaning it can never be exported from the Web Cryptography API as raw bytes.
 
 \[
 \text{Password} + \text{Salt} \xrightarrow{\text{PBKDF2(200000, SHA-256)}} \text{Derived Key}
@@ -204,7 +204,7 @@ This design ensures that the server cannot verify passwords directly, cannot det
 
 \subsection{Per-Note Key Wrapping}
 
-Each note has its own randomly generated AES-256-GCM key. The note key encrypts the title and content separately, with each encryption operation using a fresh random IV. The note key is then wrapped (encrypted) by the user's derived key before being sent to the server. This indirection provides two critical properties:
+Each note has its own randomly generated AES-256-GCM key~\cite{ref2,ref17}. The note key encrypts the title and content separately, with each encryption operation using a fresh random IV. The note key is then wrapped (encrypted) by the user's derived key before being sent to the server. This indirection provides two critical properties:
 \begin{itemize}
     \item \textbf{Key independence:} Compromising one note's key does not compromise other notes.
     \item \textbf{Re-keying support:} Changing the master password requires only re-wrapping all note keys, not re-encrypting any note content.
@@ -212,7 +212,7 @@ Each note has its own randomly generated AES-256-GCM key. The note key encrypts 
 
 \subsection{ECDH Key Exchange for Sharing}
 
-Note sharing uses Elliptic Curve Diffie-Hellman (ECDH) over the P-256 curve. Each user generates an ECDH keypair at signup. The public key is stored openly on the server; the private key is encrypted with the user's derived key before storage.
+Note sharing uses Elliptic Curve Diffie-Hellman (ECDH) over the P-256 curve~\cite{ref7,ref9}. Each user generates an ECDH keypair at signup. The public key is stored openly on the server; the private key is encrypted with the user's derived key before storage.
 
 On signup, each user generates an ECDH keypair. The public key is stored in plaintext on the server and is publicly fetchable. The private key is encrypted with the user's derived key before storage. To share a note, the sender fetches the recipient's public key, decrypts their own ECDH private key, and computes:
 
@@ -220,47 +220,47 @@ On signup, each user generates an ECDH keypair. The public key is stored in plai
 \text{SharedSecret} = \text{PrivateKey}_{\text{Sender}} \times \text{PublicKey}_{\text{Recipient}}
 \]
 
-This shared secret is passed through HKDF with the note ID as salt to produce a symmetric AES-256-GCM key. The note key is unwrapped from the sender's derived key, re-wrapped with this HKDF-derived key, and stored on the server. The recipient reverses the process: they decrypt their own ECDH private key, compute the same shared secret using the sender's public key, derive the same HKDF key, and unwrap the note key. The server cannot derive the shared secret because it lacks access to either user's unencrypted ECDH private key.
+This shared secret is passed through HKDF~\cite{ref4,ref8} with the note ID as salt to produce a symmetric AES-256-GCM key. The note key is unwrapped from the sender's derived key, re-wrapped with this HKDF-derived key, and stored on the server. The recipient reverses the process: they decrypt their own ECDH private key, compute the same shared secret using the sender's public key, derive the same HKDF key, and unwrap the note key. The server cannot derive the shared secret because it lacks access to either user's unencrypted ECDH private key.
 
 \section{Security Simulator}
 
-A central contribution of this work is the integrated educational security simulator, which provides transparent, verifiable demonstration of the system's security properties. The simulator implements four interactive attack scenarios at a dedicated route within the application. Unlike the main application where cryptographic keys are non-extractable for security, the simulator reimplements all cryptographic operations with extractable keys specifically for display purposes, allowing users to inspect intermediate values---keys, ciphertexts, and plaintexts---that would normally be invisible.
+One of the contributions of this work is the integrated instructive security simulator, which provides a clear and empirical demonstration of the system's security features. The simulator contains four interactive attack scenarios that users can explore through a dedicated section of the application. While the main application keeps cryptographic keys non-extractable to ensure strong security, the simulator uses a special instructive implementation where these keys can be extracted and displayed. This enables users to observe and understand the internal workings of cryptographic processes by viewing intermediate values such as encryption keys, ciphertexts, and plaintexts that are usually hidden in a secure environment.
 
 \subsection{Simulator Architecture and Design}
 
-The simulator presents each attack scenario as a step-by-step visual narrative. A typewriter-style terminal component introduces the attack context, establishing the threat model and attacker capabilities. Interactive visual components then demonstrate each stage of the attack, from initial access through attempted exploitation. After each step, the simulator shows the cryptographic state---what the attacker has obtained versus what they would need---making it visually clear why the attack fails.
+The simulator depicts the attacks as a series of sequential visual stories. A typewriter-style terminal component describes the overall context of the attack---threat level and attacker's capabilities---while the interactive graphical parts illustrate all phases of the attack from initial access to attempts at exploitation. After each phase of the attack, the simulator visually presents the cryptographic state of the attacker (what they have in their possession compared to what they must possess) to provide a clear picture as to where the attack failure occurred.
 
-Each scenario concludes with an analysis section that summarizes the cryptographic guarantees preventing the attack. The simulator uses a distinct dark theme with hacker-aesthetic styling, clearly differentiated from the main application interface to avoid confusion between simulated and real cryptographic operations.
+Each attack scenario is represented in a detailed visual sequence with the help of a computer terminal that explains the context in terms of the intentions of the attacker and the capabilities of the attacker. Visual representations of the cryptographic state illustrate reasons for failure to complete the attack.
 
 \subsection{Scenario 1: Database Leak}
 
-This scenario simulates an attacker gaining unauthorized read access to the database. The simulator displays the contents of all tables---user records, encrypted notes, sharing records, and attachment metadata---showing the attacker's perspective. It then walks through each piece of data, demonstrating that the attacker possesses only ciphertext, IVs, salts, and wrapped keys. The key insight visualized here is that without the user's password-derived key, which exists exclusively in browser memory and was never transmitted or stored, none of the encrypted data can be decrypted. The attacker cannot even begin the decryption process because AES-256-GCM requires the key as input; the ciphertext alone is indistinguishable from random noise.
+This scenario models an attacker having unauthorized read access to the database. The simulator presents all the tables---user records, encrypted notes, sharing records, attachment metadata---as viewed by the attacker. It shows how the attacker sees each item of data along with the fact that all they have is ciphertext, IVs, salts, and wrapped keys. The key element visualized in this scenario is that without the user-provided password-derived key stored only in browser memory, none of the protected data can be decrypted; the ciphertext alone is indistinguishable from random noise.
 
 \subsection{Scenario 2: Password Leak}
 
-This scenario demonstrates what happens when an attacker acquires the user's password through phishing, credential reuse, or social engineering. The simulator shows the attacker deriving the PBKDF2 key using the publicly available salt, then successfully decrypting all user data. While this appears to be a successful attack, the simulator emphasizes two critical points. First, the attack requires the attacker to obtain the password through means entirely outside the system---a server breach alone is insufficient. Second, PBKDF2 with 200,000 iterations imposes a significant computational cost on brute-force attempts against weak passwords. The simulator includes an interactive component where users can observe how different iteration counts affect derivation time and brute-force resistance.
+This scenario illustrates what occurs when attackers gain access to user credentials via phishing, credential reuse, or social engineering. The simulator depicts an attacker generating the PBKDF2 key from the publicly available salt and successfully recovering user's private data. The simulator emphasizes two main points. First, the attacker must gain knowledge of the password through methods that do not include accessing the system itself---accessing the server is not enough. Second, PBKDF2 with 200,000 iterations provides an excessive computational cost for brute-force attempts against weakly protected passwords. The simulator includes an interactive component allowing users to observe how different iteration counts affect derivation time and brute-force resistance.
 
 \subsection{Scenario 3: Cookie Forgery}
 
-This scenario simulates an attacker stealing a valid session cookie through network sniffing, cross-site scripting, or physical access. The simulator shows the attacker using the stolen cookie to make authenticated API requests, retrieving all encrypted data associated with the user. The critical visualization here is that while the attacker gains access to ciphertext, the session cookie does not provide the derived key. The attacker sees only encrypted blobs, encrypted note content, and wrapped keys. The simulator demonstrates that decrypting any of this data without the derived key is computationally infeasible, and that the HMAC-SHA256 signature prevents the attacker from modifying the cookie to impersonate other users.
+The simulation demonstrates an attacker using a valid session cookie obtained from network sniffing, XSS, or physical access to make authenticated API requests as the original user and retrieve all encrypted data. The critical insight is that while the attacker gains access to encrypted ciphertext, they do not have the derived key needed for decryption. The attacker only has access to encrypted blobs, encrypted note content, and wrapped keys. Decrypting any of this data without the derived key is computationally impractical, and the HMAC-SHA256 signature prevents the attacker from modifying the cookie to impersonate other users.
 
 \subsection{Scenario 4: Service Key Leak}
 
-This is the most severe simulated scenario: an attacker obtains the cloud infrastructure's administrative service key, granting full read and write access to the database, storage buckets, and user management APIs. This represents the maximum possible server-side compromise. The simulator demonstrates that even with this level of access, the attacker cannot decrypt user data. The derived key still requires the password (not available from the server). The ECDH private keys remain encrypted with the user's derived key. The HMAC cookie signing key is stored in server environment variables rather than the database. The simulator emphasizes that in a zero-knowledge architecture, the server---and anyone who compromises it---operates exclusively on ciphertext.
+This is the most extreme scenario: an attacker gains access to the cloud infrastructure's administrative service key, granting complete read and write access to the database, storage buckets, and user management APIs. This represents the worst case of a server-side compromise and demonstrates how even with this level of access, the attacker cannot decrypt user data. The derived key still requires the password not available from the server. The ECDH private keys are stored encrypted using the user's derived key. The HMAC cookie signing key is stored in server environment variables rather than the database. The simulator clearly demonstrates that within a zero-knowledge architecture, servers and all parties who compromise them will only operate on encrypted data.
 
 \subsection{Educational Value}
 
-The security simulator serves multiple purposes. It educates users about the security properties of the system in an intuitive, visual manner. It provides independent verifiability---users can confirm for themselves that the claimed security guarantees hold. It demonstrates defense in depth by showing how multiple cryptographic layers protect against different attack vectors. And it serves as a pedagogical tool for understanding applied cryptography, illustrating concepts such as key derivation, symmetric encryption, key exchange, and the difference between authentication and encryption in a concrete, interactive context.
+The security simulator serves several purposes. It allows users to learn about the security characteristics of the system in an intuitive and visual way. It enables independent verification that the security guarantees provided by the system are correct and valid. It demonstrates defense in depth by showing how multiple cryptographic layers protect against different attack vectors. Finally, it provides an opportunity to learn about applied cryptography---key derivation, symmetric and asymmetric encryption, key exchange, and the difference between authentication and encryption---through a concrete, interactive example.
 
 \section{Implementation}
 
 \subsection{Cryptographic Operations Layer}
 
-The cryptographic core of the application implements five categories of operations using the Web Cryptography API. Key derivation transforms a user password into a non-extractable AES-256-GCM key using PBKDF2 with 200,000 iterations of SHA-256 and a random 16-byte salt. Encryption and decryption functions perform AES-256-GCM operations with random 12-byte IVs generated per operation. Key wrapping encrypts per-note keys using the user's derived key, enabling secure storage and retrieval. ECDH key exchange implements the P-256 Diffie-Hellman protocol followed by HKDF-based symmetric key derivation for note sharing. Binary encryption handles file attachments by reading them as ArrayBuffers, encrypting with the note key, and producing encrypted buffers suitable for cloud storage.
+The five categories of operations supported through the Web Cryptography API~\cite{ref1} are key derivation, encryption and decryption, key wrapping, ECDH key exchange, and binary encryption of file attachments. Key derivation creates an AES-256-GCM key from a user-provided password using PBKDF2~\cite{ref3} with 200,000 iterations of SHA-256 and a random 16-byte salt. Encryption and decryption provide AES-256-GCM operations~\cite{ref2}, each time generating a new 12-byte IV randomly per operation. Key wrapping encrypts per-note keys using the user's derived key for secure storage and retrieval. ECDH key exchange implements the P-256 Diffie-Hellman protocol~\cite{ref7} followed by HKDF-based symmetric key derivation~\cite{ref4} for note sharing. Binary encryption handles file attachments by reading them as ArrayBuffers, encrypting with the note key, and producing encrypted buffers suitable for cloud storage.
 
 \subsection{Authentication and Session Flow}
 
-The authentication system consists of three phases. During account creation, the client generates cryptographic artifacts locally---salt, encrypted sentinel, ECDH keypair with encrypted private key---and transmits only these artifacts to the server. The password never leaves the browser. During sign-in, the server returns the stored salt and encrypted sentinel (or indistinguishable random data for unknown usernames). The client derives the key, attempts decryption, and proves identity by returning the decrypted sentinel. Upon successful proof, the server issues an HMAC-SHA256 signed cookie. Session verification occurs on every authenticated request through cookie signature validation. The cookie contains only the username and its cryptographic signature; no sensitive credentials are stored in the session token.
+The authentication system consists of three phases. During account creation, the client generates cryptographic artifacts---salt, encrypted sentinel, ECDH keypair with encrypted private key---and transmits only these artifacts to the server. The password never leaves the browser. During sign-in, the server returns the stored salt and encrypted sentinel (or indistinguishable random data for unknown usernames). The client derives the key, attempts decryption, and proves identity by returning the decrypted sentinel. Upon successful proof, the server issues an HMAC-SHA256 signed cookie~\cite{ref10}. Session verification occurs on every authenticated request through cookie signature validation. The cookie contains only the username and its cryptographic signature; no sensitive credentials are stored in the session token.
 
 \subsection{Note Encryption Pipeline}
 
@@ -272,7 +272,7 @@ Note sharing follows a cryptographic handshake protocol. The sender retrieves th
 
 \section{Security Analysis}
 
-Trustless Notes operates under a threat model encompassing server compromise, infrastructure key leakage, network interception, session theft, and password guessing. The following analysis examines each attack vector.
+Trustless Notes operates under a threat model encompassing server compromise, infrastructure key leakage, network interception~\cite{ref18}, session theft, and password guessing.
 
 \subsection{Server and Infrastructure Compromise}
 
@@ -280,7 +280,7 @@ An attacker with full database access or administrative cloud infrastructure acc
 
 \subsection{Session and Network Attacks}
 
-A stolen session cookie grants the attacker access to the API but yields only ciphertext. The cookie itself contains no key material, and the server cannot decrypt any stored data. Network interception reveals only HTTPS-encrypted traffic containing ciphertext; all plaintext data and cryptographic keys remain client-side. The anti-enumeration sign-in protocol prevents attackers from determining registered usernames, closing a common reconnaissance vector.
+A stolen session cookie grants the attacker access to the API but yields only ciphertext. The cookie contains no key material, and the server cannot decrypt any stored data. Network traffic between the client and server is encrypted using HTTPS; the only visible traffic is encrypted ciphertext, while all plaintext data and cryptographic keys remain on the client. The anti-enumeration sign-in protocol prevents attackers from determining registered usernames, closing a common reconnaissance vector.
 
 \subsection{Password-Based Attacks}
 
@@ -288,7 +288,7 @@ Password compromise represents the most significant threat, as the attacker can 
 
 \section{Conclusion}
 
-Trustless Notes demonstrates how modern web cryptography and network security principles can be combined to build a zero-knowledge application that protects user privacy even against server-side compromise. By leveraging the Web Cryptography API, the system performs all encryption and decryption exclusively on the client side, ensuring that the server stores only opaque ciphertext that is computationally infeasible to reverse without the user's password-derived key.
+Trustless Notes illustrates how modern web cryptography and network security principles can be combined to build a zero-knowledge application that protects user privacy even against server-side compromise. By leveraging the Web Cryptography API, the system performs all encryption and decryption exclusively on the client side, ensuring that the server stores only opaque ciphertext that is computationally infeasible to reverse without the user's password-derived key.
 
 The integrated security simulator provides transparent, interactive verification of these security properties, enabling users to independently confirm that the system resists database breaches, password leaks, cookie forgery, and infrastructure key compromises. The simulator serves both as an educational tool and as a demonstration that security guarantees in zero-knowledge systems are mathematical rather than organizational.
 
@@ -296,31 +296,67 @@ The system demonstrates practical applications of PBKDF2 key derivation with non
 
 Future work includes implementing end-to-end encrypted real-time collaboration, password rotation through key re-wrapping, native mobile clients using platform cryptography APIs, WebAuthn integration for passwordless zero-knowledge authentication, and social key recovery mechanisms that maintain security guarantees while providing fallback options for legitimate users.
 
-\begin{thebibliography}{00}
+\begin{thebibliography}{20}
 
-\bibitem{webcrypto}
+\bibitem{ref1}
 World Wide Web Consortium, ``Web Cryptography API,'' W3C Recommendation, 2017.
 
-\bibitem{nist80038d}
+\bibitem{ref2}
 National Institute of Standards and Technology, ``Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC,'' NIST SP 800-38D, 2007.
 
-\bibitem{nist800132}
+\bibitem{ref3}
 National Institute of Standards and Technology, ``Recommendation for Password-Based Key Derivation Part 1: Storage Applications,'' NIST SP 800-132, 2010.
 
-\bibitem{krawczyk}
+\bibitem{ref4}
 H. Krawczyk, ``Cryptographic Extraction and Key Derivation: The HKDF Scheme,'' in \textit{Advances in Cryptology -- CRYPTO 2010}, Springer, 2010, pp. 631--648.
 
-\bibitem{bernstein}
+\bibitem{ref5}
 D. J. Bernstein, ``Curve25519: New Diffie-Hellman Speed Records,'' in \textit{PKC 2006}, Springer, 2006, pp. 207--228.
 
-\bibitem{stallings}
+\bibitem{ref6}
 W. Stallings, \textit{Cryptography and Network Security: Principles and Practice}, 8th ed. Pearson, 2020.
 
-\bibitem{supabase}
-Supabase, ``Supabase Documentation,'' 2024.
+\bibitem{ref7}
+National Institute of Standards and Technology, ``Recommendation for Pair-Wise Key Establishment Schemes Using Discrete Logarithm Cryptography,'' NIST SP 800-56A Rev. 3, 2018.
 
-\bibitem{nextjs}
-Vercel, ``Next.js Documentation: App Router,'' 2024.
+\bibitem{ref8}
+National Institute of Standards and Technology, ``Recommendation for Key-Derivation Methods in Key-Establishment Schemes,'' NIST SP 800-56C Rev. 2, 2020.
+
+\bibitem{ref9}
+National Institute of Standards and Technology, ``Elliptic Curve Domain Parameters,'' NIST SP 800-186, 2023.
+
+\bibitem{ref10}
+H. Krawczyk, M. Bellare, and R. Canetti, ``HMAC: Keyed-Hashing for Message Authentication,'' RFC 2104, 1997.
+
+\bibitem{ref11}
+M. Bellare, ``New Proofs for NMAC and HMAC: Security Without Collision-Resistance,'' in \textit{Advances in Cryptology -- CRYPTO 2006}, Springer, 2006, pp. 602--619.
+
+\bibitem{ref12}
+A. Biryukov, D. Dinu, and D. Khovratovich, ``Argon2: Memory-Hard Function for Password Hashing and Proof-of-Work Applications,'' RFC 9106, 2021.
+
+\bibitem{ref13}
+K. Cairns and H. Halpin, ``Security Analysis of the W3C Web Cryptography API,'' in \textit{Proc. 2nd Int. Conf. Security Standardisation Research (SSR)}, Springer, 2016, pp. 112--130.
+
+\bibitem{ref14}
+M. Alatawi and N. Saxena, ``SoK: An Analysis of End-to-End Encryption and Authentication Ceremonies in Secure Messaging Systems,'' in \textit{Proc. 16th ACM Conf. Security and Privacy in Wireless and Mobile Networks (WiSec)}, 2023, pp. 195--207.
+
+\bibitem{ref15}
+P. Kocher, ``Timing Attacks on Implementations of Diffie-Hellman, RSA, DSS, and Other Systems,'' in \textit{Advances in Cryptology -- CRYPTO '96}, Springer, 1996, pp. 104--113.
+
+\bibitem{ref16}
+D. McGrew and J. Viega, ``The Galois/Counter Mode of Operation (GCM),'' NIST Submission, 2004.
+
+\bibitem{ref17}
+National Institute of Standards and Technology, ``Advanced Encryption Standard (AES),'' FIPS PUB 197, 2001.
+
+\bibitem{ref18}
+E. Rescorla, ``The Transport Layer Security (TLS) Protocol Version 1.3,'' RFC 8446, 2018.
+
+\bibitem{ref19}
+M. Adalier, ``Efficient and Secure Elliptic Curve Cryptography Implementation of Curve P-256,'' in \textit{NIST ECC Workshop}, 2015.
+
+\bibitem{ref20}
+M. Scarlata, G. Torrisi, M. Backendal, and K. G. Paterson, ``Zero Knowledge (About) Encryption: A Comparative Security Analysis of Three Cloud-based Password Managers,'' in \textit{Proc. USENIX Security Symp.}, 2026.
 
 \end{thebibliography}
 
